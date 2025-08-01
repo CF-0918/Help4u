@@ -17,58 +17,33 @@ class CarServiceProgress extends StatelessWidget {
   });
 
   final List<Map<String, String>> _serviceSteps = const [
-    {
-      'title': 'In Inspection',
-      'content': 'Your car is in the inspection process.',
-    },
-    {
-      'title': 'Service Prep',
-      'content': 'Preparing service parts and tools.',
-    },
-    {
-      'title': 'Servicing',
-      'content': 'Performing scheduled maintenance.',
-    },
-    {
-      'title': 'Completed',
-      'content': 'Service is completed. Ready for pickup.',
-    },
+    {'title': 'In Inspection', 'content': 'Your car is in the inspection process.'},
+    {'title': 'Service Prep', 'content': 'Preparing service parts and tools.'},
+    {'title': 'Servicing', 'content': 'Performing scheduled maintenance.'},
+    {'title': 'Quality Check', 'content': 'Post-service inspection in progress.'},
+    {'title': 'Payment', 'content': 'Awaiting customer payment for services.'},
+    {'title': 'Ready for Pickup', 'content': 'Service completed. Car ready for pickup.'},
   ];
 
   final List<Map<String, String>> _repairSteps = const [
-    {
-      'title': 'In Inspection',
-      'content': 'Your car is in the inspection process.',
-    },
-    {
-      'title': 'Job Preparation',
-      'content': 'Preparing tools and replacement parts.',
-    },
-    {
-      'title': 'Approval Customer',
-      'content': 'Waiting for customer approval.',
-    },
-    {
-      'title': 'Repairing',
-      'content': 'Repair process ongoing.',
-    },
-    {
-      'title': 'Completed',
-      'content': 'Repair is done. Your car is ready.',
-    },
+    {'title': 'In Inspection', 'content': 'Your car is in the inspection process.'},
+    {'title': 'Job Preparation', 'content': 'Preparing tools and replacement parts.'},
+    {'title': 'Approval Customer', 'content': 'Waiting for customer approval.'},
+    {'title': 'Repairing', 'content': 'Repair process ongoing.'},
+    {'title': 'Quality Check', 'content': 'Final inspection before delivery.'},
+    {'title': 'Payment', 'content': 'Awaiting customer payment for repairs.'},
+    {'title': 'Ready for Pickup', 'content': 'Repair completed. Car ready for pickup.'},
   ];
 
   @override
   Widget build(BuildContext context) {
     final steps = isRepair ? _repairSteps : _serviceSteps;
 
-    return Stepper(
-      currentStep: currentStep,
-      controlsBuilder: (context, details) => const SizedBox.shrink(),
-      physics: const NeverScrollableScrollPhysics(),
-      onStepTapped: (_) {},
-      steps: List.generate(steps.length, (index) {
-        // Color logic
+    return ListView.builder(
+      itemCount: steps.length,
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      itemBuilder: (context, index) {
         Color color;
         if (index < currentStep) {
           color = Colors.green;
@@ -78,38 +53,87 @@ class CarServiceProgress extends StatelessWidget {
           color = Colors.grey;
         }
 
-        // Step content logic
-        String? contentText;
-        if (index <= currentStep) {
-          if (isRepair && index == 0) {
-            contentText = '${steps[index]['content']}\n\nCustomer Comment: $userRepairComment';
-          } else if (!isRepair && index == 0) {
-            contentText = '${steps[index]['content']}\n\nService Info: $userServiceKM';
-          } else if (index == steps.length - 1 && isPickupConfirmed) {
-            contentText = 'Pickup confirmed by customer.';
-          } else {
-            contentText = steps[index]['content'];
-          }
-        } else {
-          contentText = null; // Hide future steps
+        String content = '';
+        if (index == currentStep) {
+          content = _buildStepContent(steps);
+        } else if (index < currentStep) {
+          content = steps[index]['content'] ?? '';
         }
 
-        return Step(
-          title: Text(
-            steps[index]['title']!,
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
-          ),
-          content: contentText != null
-              ? Text(contentText, style: TextStyle(color: color))
-              : const SizedBox.shrink(),
-          isActive: index <= currentStep,
-          state: index < currentStep
-              ? StepState.complete
-              : (index == currentStep
-              ? (isPickupConfirmed ? StepState.complete : StepState.editing)
-              : StepState.indexed),
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: color,
+                  child: Icon(
+                    index < currentStep
+                        ? Icons.check
+                        : index == currentStep
+                        ? Icons.directions_car
+                        : Icons.radio_button_unchecked,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+                if (index != steps.length - 1)
+                  Container(
+                    width: 2,
+                    height: 40,
+                    color: color,
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      steps[index]['title']!,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                    if (content.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6.0),
+                        child: Text(
+                          content,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          ],
         );
-      }),
+      },
     );
+
+  }
+
+  String _buildStepContent(List<Map<String, String>> steps) {
+    final baseContent = steps[currentStep]['content'] ?? '';
+
+    if (isRepair && currentStep == 0) {
+      return '$baseContent\n\nCustomer Comment: $userRepairComment';
+    } else if (!isRepair && currentStep == 0) {
+      return '$baseContent\n\nService Info: $userServiceKM';
+    } else if (steps[currentStep]['title'] == 'Ready for Pickup' && isPickupConfirmed) {
+      return 'Pickup confirmed by customer.';
+    } else {
+      return baseContent;
+    }
   }
 }

@@ -17,7 +17,8 @@ class MainHome extends StatefulWidget {
 
 class _MainHomeState extends State<MainHome> {
   String userName = "Yong Cheng Fung";
-
+  //String status = "Await-Payment"; // Replace this with your actual status variable
+  String status = "Paid";
   List<Appointment> upcomingAppointments = [
     Appointment(
       vehicle: "Toyota Vios 1.5G",
@@ -59,7 +60,7 @@ class _MainHomeState extends State<MainHome> {
             SizedBox(height: 10),
             Text(
               title,
-              style: TextStyle(color: Colors.black, fontSize: 16),
+              style: TextStyle(color: Colors.black, fontSize: 16,fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -163,7 +164,7 @@ class _MainHomeState extends State<MainHome> {
                           child: _buildMenuBox(
                             context,
                             Icons.receipt,
-                            "OutStanding Payment",
+                            "OutStanding Invoice",
                             UserInvoicePage(),
                           ),
                         ),
@@ -247,62 +248,59 @@ class _MainHomeState extends State<MainHome> {
                     padding: const EdgeInsets.symmetric(vertical: 20,horizontal: 15),
                     child: Column(
                       children: [
-                        Row(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              flex: 2,
+                            Container(
+                              margin: EdgeInsets.symmetric(vertical: 10),
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black12,
-                                      blurRadius: 8,
-                                      offset: Offset(0, 4),
+
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.asset(
+                                        "images/assets/google.png",
+                                        width: 70,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16), // Space between image and text
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Plate No: VHA 5309",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          "Car: Toyota Vios 1.8 G",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[900],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                                child: Container(
-                                  margin: EdgeInsets.symmetric(vertical: 30),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.asset(
-                                          "images/assets/google.png",
-                                          width: 70,
-                                          height: 70,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        "Plate No: VHA 5309",
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        "Car: Toyota Vios 1.8 G",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey[900],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+
                               ),
                             ),
 
-                            Expanded(
-                              flex: 2,
+                            Container(
+                              width: double.infinity,
                               child: CarServiceProgress(
                                 currentStep: 3,
                                 isRepair: false, // or true for repair
@@ -313,13 +311,29 @@ class _MainHomeState extends State<MainHome> {
                           ],
                         ),
                         SizedBox(height: 10),
-                        Align(
+
+                        status == "Await-Payment"
+                            ? Align(
                           alignment: Alignment.centerRight,
                           child: ElevatedButton(
-                            onPressed: () {},
-                            child: Text("View Progress"),
+                            onPressed: () {
+                              // Redirect to payment gateway
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => AppointmentPage()),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                            ),
+                            child: Text(
+                              "Pay Now",
+                              style: TextStyle(color: Colors.white),
+                            ),
                           ),
-                        ),
+                        )
+                            : SizedBox.shrink(),
+
                       ],
                     ),
                   ),
