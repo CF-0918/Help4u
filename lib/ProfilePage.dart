@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:help4u_assignment/SendMessagePage.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -10,6 +11,8 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return  Container(
+      child: SendMessagePage(),
+    );
   }
 }
