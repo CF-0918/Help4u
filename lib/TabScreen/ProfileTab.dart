@@ -4,11 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
-import 'package:workshop_assignment/Screen/ChangePassword.dart';
-import 'package:workshop_assignment/Screen/EditProfile.dart';
-import 'package:workshop_assignment/Screen/MyFeedback.dart';
-import 'package:workshop_assignment/Screen/Settings.dart';
 
+import 'package:workshop_assignment/Repository/user_repo.dart';
+import 'package:workshop_assignment/authencation/auth_service.dart';
+
+import '../Models/UserProfile.dart';
+
+import '../Screen/ChangePassword.dart';
+import '../Screen/EditProfile.dart';
+import '../Screen/MyFeedback.dart';
+import '../Screen/Settings.dart';
 import '../Screen/LogOut.dart';
 import '../Screen/ServiceReminder.dart';
 
@@ -38,11 +43,11 @@ final List<ProfileTabItem> profileTabsList = [
   ProfileTabItem(icon: Icons.person,        label: 'Edit Profile',        builder: (_) => const EditProfile()),
   ProfileTabItem(icon: Icons.lock,          label: 'Change Password',     builder: (_) => const ChangePassword()),
   ProfileTabItem(icon: Icons.history,       label: 'Appointment History', builder: (_) => const Servicereminder()),
-  ProfileTabItem(icon: Icons.note_alt, label: 'My Feedback',  builder: (_) => const MyFeedback()),
+  ProfileTabItem(icon: Icons.note_alt,      label: 'My Feedback',         builder: (_) => const MyFeedback()),
   ProfileTabItem(icon: Icons.notifications, label: 'Service Reminder',    builder: (_) => const Servicereminder()),
   ProfileTabItem(icon: Icons.card_giftcard, label: 'Vouchers & Rewards',  builder: (_) => const Servicereminder()),
   ProfileTabItem(icon: Icons.settings,      label: 'Settings',            builder: (_) => const Settings()),
-  ProfileTabItem(icon: Icons.logout,        label: 'Log out',builder: (_) => const LogOut()),
+  ProfileTabItem(icon: Icons.logout,        label: 'Log out',             builder: (_) => const LogOut()),
 ];
 
 // ---------- Member barcode overlay ----------
@@ -173,7 +178,43 @@ enum PhotoAction { camera, gallery, remove }
 
 class _ProfileTabState extends State<ProfileTab> {
   final ImagePicker _picker = ImagePicker();
-  t.Uint8List? _avatarBytes; // works on web & mobile
+
+  final _auth = AuthService();
+  final _repo = UserRepository();
+
+  bool _loading = true;
+  UserProfile? _user;
+
+  t.Uint8List? _avatarBytes; // live-picked image (web/mobile safe)
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    try {
+      final uid = _auth.currentUser?.id;
+      if (uid == null) {
+        setState(() {
+          _user = null;
+          _loading = false;
+        });
+        return;
+      }
+      final u = await _repo.fetchUserDetails(uid);
+      if (!mounted) return;
+      setState(() {
+        _user = u;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      // Optional: show a snackbar if you want
+    }
+  }
 
   Future<void> _chooseCameraOrLibrary() async {
     final action = await showModalBottomSheet<PhotoAction>(
@@ -183,14 +224,14 @@ class _ProfileTabState extends State<ProfileTab> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              contentPadding:EdgeInsets.symmetric(vertical: 10,horizontal: 15),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
               leading: const Icon(Icons.photo_camera),
               title: const Text('Take photo'),
               onTap: () => Navigator.pop(ctx, PhotoAction.camera),
             ),
-            Divider(height: 3,thickness: 2,color: Colors.grey,),
+            const Divider(height: 3, thickness: 2, color: Colors.grey),
             ListTile(
-              contentPadding:EdgeInsets.symmetric(vertical: 10,horizontal: 15),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
               leading: const Icon(Icons.photo_library),
               title: const Text('Choose from gallery'),
               onTap: () => Navigator.pop(ctx, PhotoAction.gallery),
@@ -226,169 +267,201 @@ class _ProfileTabState extends State<ProfileTab> {
     if (picked == null) return;
 
     final bytes = await picked.readAsBytes();
-    setState(() => _avatarBytes = t.Uint8List.fromList(bytes)); // web-safe
+    setState(() => _avatarBytes = t.Uint8List.fromList(bytes));
+    // NOTE: uploading/saving to storage & updating DB can be added here.
+  }
+
+  ImageProvider _resolveAvatar() {
+    // priority: freshly picked -> user.photoUrl -> placeholder
+    if (_avatarBytes != null) {
+      return MemoryImage(_avatarBytes!);
+    }
+
+    final photoUrl = _user?.profilePicUrl; // <-- adjust to your field name if different (e.g., profilePicture)
+    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+      return NetworkImage(photoUrl);
+    }
+
+    return const AssetImage('assets/icons/placeholder.png');
   }
 
   @override
   Widget build(BuildContext context) {
     const purple = Color(0xFF9333EA);
 
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          children: [
-            // ===== Header (gradient + avatar + name + points) =====
-            Container(
-              margin: const EdgeInsets.only(top: 10),
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 26, 20, 24),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final displayName = (_user?.name?.trim().isNotEmpty ?? false)
+        ? _user!.name
+        : 'Member';
+
+    final memberLevel = (_user?.memberLevel?.trim().isNotEmpty ?? false)
+        ? _user!.memberLevel
+        : 'Bronze Member'; // <-- adjust default if needed
+
+    final points = _user?.points ?? 0;
+
+    final barcodeValue = _user?.uid ?? 'SM-000000';
+
+    return SafeArea(
+      child: Scaffold(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            children: [
+              // ===== Header (gradient + avatar + name + points) =====
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 24),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+                  ),
+                  borderRadius: BorderRadius.all(Radius.circular(25)),
                 ),
-                borderRadius: BorderRadius.all(Radius.circular(25)),
-              ),
-              child: Column(
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
-                          shape: BoxShape.circle,
-                        ),
-                        child: GestureDetector(
-                          onTap: _chooseCameraOrLibrary,
-                          child: CircleAvatar(
-                            radius: 44,
-                            backgroundColor: Colors.white,
-                            backgroundImage: _avatarBytes != null
-                                ? MemoryImage(_avatarBytes!)
-                                : const AssetImage('assets/images/profile.jpg')
-                            as ImageProvider,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: -2,
-                        bottom: -2,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
+                child: Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.25),
                             shape: BoxShape.circle,
                           ),
-                          padding: const EdgeInsets.all(3),
-                          child: const CircleAvatar(
-                            radius: 14,
-                            backgroundColor: purple,
-                            child: Icon(Icons.camera_alt,
-                                size: 16, color: Colors.white),
+                          child: GestureDetector(
+                            onTap: _chooseCameraOrLibrary,
+                            child: CircleAvatar(
+                              radius: 44,
+                              backgroundColor: Colors.white,
+                              backgroundImage: _resolveAvatar(),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    "John Mechanic",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Customer - Brownse Member",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 10),
-                  const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.money, size: 20, color: Colors.amber),
-                      SizedBox(width: 6),
-                      Text(
-                        "Member Points (198 pts)",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: const EdgeInsets.all(3),
+                            child: const CircleAvatar(
+                              radius: 14,
+                              backgroundColor: purple,
+                              child: Icon(Icons.camera_alt,
+                                  size: 16, color: Colors.white),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-
-                  // View barcode button
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      ],
                     ),
-                    child: TextButton.icon(
-                      onPressed: () {
-                        showMemberBarcodeOverlay(context, data: 'SM-000198');
-                      },
-                      icon: const Icon(Icons.qr_code,
-                          size: 20, color: Colors.white),
-                      label: const Text(
-                        "View Member Barcode",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                    const SizedBox(height: 14),
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Customer - $memberLevel", // <-- shows member level
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.monetization_on, size: 20, color: Colors.amber),
+                        const SizedBox(width: 6),
+                        Text(
+                          "Member Points ($points pts)", // <-- shows points
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        alignment: Alignment.centerLeft,
-                      ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ===== Menu list =====
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: profileTabsList.length,
-              itemBuilder: (context, i) {
-                final tab = profileTabsList[i];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: ProfileTile(
-                    icon: tab.icon,
-                    label: tab.label,
-                    onTap: tab.onTap ??
-                            () {
-                          if (tab.builder != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: tab.builder!),
-                            );
-                          }
+                    const SizedBox(height: 15),
+      
+                    // View barcode button
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: TextButton.icon(
+                        onPressed: () {
+                          showMemberBarcodeOverlay(context, data: barcodeValue);
                         },
-                  ),
-                );
-              },
-            ),
-          ],
+                        icon: const Icon(Icons.qr_code,
+                            size: 20, color: Colors.white),
+                        label: const Text(
+                          "View Member Barcode",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          alignment: Alignment.centerLeft,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      
+              const SizedBox(height: 16),
+      
+              // ===== Menu list =====
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: profileTabsList.length,
+                itemBuilder: (context, i) {
+                  final tab = profileTabsList[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: ProfileTile(
+                      icon: tab.icon,
+                      label: tab.label,
+                      onTap: tab.onTap ??
+                              () {
+                            if (tab.builder != null) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: tab.builder!),
+                              );
+                            }
+                          },
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

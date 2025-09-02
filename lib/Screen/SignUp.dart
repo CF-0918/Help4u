@@ -213,11 +213,11 @@ class _SignUpState extends State<SignUp> {
       // 5) Send OTP via Resend (✅ no JWT needed)
       final hh = expiresAt.toLocal().hour.toString().padLeft(2, '0');
       final mm = expiresAt.toLocal().minute.toString().padLeft(2, '0');
-      await OtpService.sendEmail(
-        to: email.trim(),
-        subject: 'Your OTP Code',
-        text: 'Hello $name,\n\nUse this OTP: $otp\nIt expires at $hh:$mm.',
-      );
+      // await OtpService.sendEmail(
+      //   to: email.trim(),
+      //   subject: 'Your OTP Code',
+      //   text: 'Hello $name,\n\nUse this OTP: $otp\nIt expires at $hh:$mm.',
+      // );
 
       // (optional) local notification for dev
       NotificationsApi.showNotification(

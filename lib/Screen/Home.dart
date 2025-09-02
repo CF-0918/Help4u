@@ -1,12 +1,13 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 
-import 'package:workshop_assignment/Repository/user_repo.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
+import 'package:workshop_assignment/Repository/user_repo.dart';
+import 'package:workshop_assignment/Repository/outlet_repo.dart';
 
 import '../Models/UserProfile.dart';
+import '../Models/Outlet.dart';
 import '../TabScreen/HomeTab.dart';
 import '../TabScreen/ProgressTab.dart';
 import '../TabScreen/AppointmentsTab.dart';
@@ -27,21 +28,18 @@ class _HomeState extends State<Home> {
   String? uid;
   UserProfile? userDetails;
 
-  bool _busy = false; // in-tree loading instead of Navigator-based overlay
+  bool _busy = false;
   int _current = 0;
 
-  // Define your workshops with coordinates
-  static const List<_WorkshopLocation> workshops = [
-    _WorkshopLocation("Bukit Jalil Workshop", 3.0580, 101.6896),
-    _WorkshopLocation("Air Asia Workshop", 2.7456, 101.7090),
-  ];
+  /// Outlets pulled from Supabase
+  List<Outlet> _workshops = [];
 
-  // Keep pages simple; use const where possible.
-  late final List<Widget> _pages = [
+  late final List<Widget> _pages =
+  [
     HomeTab(),
-    const ProgressTab(),
-    const AppointmentsTab(),
-    const ProfileTab(),
+    ProgressTab(),
+    AppointmentsTab(),
+    ProfileTab(),
   ];
 
   @override
@@ -50,29 +48,37 @@ class _HomeState extends State<Home> {
     uid = _authService.currentUser?.id;
     _initData();
 
-    // After first frame, we can safely do permission & dialog flow.
+    // separate “after first frame” work so it never collides with build/nav
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _maybeSuggestNearest(context);
     });
   }
 
+  @override
   Future<void> _initData() async {
     if (!mounted) return;
-
     setState(() => _busy = true);
     try {
-      if (uid == null) {
-        // No authenticated user; just stop the spinner gracefully.
-        return;
+      if (uid != null) {
+        final user = await _userRepo.fetchUserDetails(uid!);
+        if (!mounted) return;
+        setState(() => userDetails = user);
       }
 
-      final user = await _userRepo.fetchUserDetails(uid!); // returns UserProfile?
+      // If your DB values might be “Active/ACTIVE”, our repo ilike will match.
+      final outlets = await OutletRepo().fetchOutlets(status: 'active');
       if (!mounted) return;
-      setState(() => userDetails = user);
+
+      final provider = context.read<LocationProvider>();
+      if (outlets.isNotEmpty &&
+          !outlets.any((o) => o.outletName == provider.locationName)) {
+        provider.updateLocation(outlets.first.outletName);
+      }
+
+      setState(() => _workshops = outlets);
     } catch (e) {
       if (!mounted) return;
-      // Schedule SnackBar after frame to avoid build-time side effects
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -90,20 +96,16 @@ class _HomeState extends State<Home> {
     return Scaffold(
       backgroundColor: Colors.black,
 
-      // Show AppBar only on index 0
       appBar: _current == 0
           ? HomeAppBar(
         userName: userDetails?.name ?? 'User',
-        workshops: workshops,
+        workshops: _workshops,
       )
           : null,
 
       body: Stack(
         children: [
-          // Keep state of tabs with IndexedStack
           IndexedStack(index: _current, children: _pages),
-
-          // Simple, safe loading overlay (no Navigator involved)
           if (_busy) const ModalBarrier(dismissible: false, color: Color(0x88000000)),
           if (_busy) const Center(child: CircularProgressIndicator()),
         ],
@@ -134,25 +136,33 @@ class _HomeState extends State<Home> {
   // ===== Nearest-location logic =====
   Future<void> _maybeSuggestNearest(BuildContext context) async {
     try {
+      if (_workshops.isEmpty) return;
+
       final enabled = await Geolocator.isLocationServiceEnabled();
       if (!enabled) return;
 
-      LocationPermission perm = await Geolocator.checkPermission();
+      var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        return; // user didn’t grant permission; do nothing
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return;
       }
 
       final pos = await Geolocator.getCurrentPosition();
 
-      // Find nearest workshop
-      _WorkshopLocation nearest = workshops.first;
+      // Find nearest outlet
+      Outlet nearest = _workshops.first;
       double nearestDist = double.infinity;
 
-      for (final w in workshops) {
-        final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, w.lat, w.lng);
+      for (final w in _workshops) {
+        final d = Geolocator.distanceBetween(
+          pos.latitude,
+          pos.longitude,
+          w.latitude,
+          w.longitude,
+        );
         if (d < nearestDist) {
           nearestDist = d;
           nearest = w;
@@ -162,55 +172,69 @@ class _HomeState extends State<Home> {
       final provider = context.read<LocationProvider>();
       final currentName = provider.locationName;
 
-      // If already the same, no prompt
-      if (currentName == nearest.name) return;
+      // If already selected, do nothing
+      if (currentName == nearest.outletName) return;
 
-      // Compute current-selected distance (if it exists in list)
-      final current = workshops.where((w) => w.name == currentName).cast<_WorkshopLocation?>().firstOrNull;
-      double currentDist = double.infinity;
-      if (current != null) {
-        currentDist = Geolocator.distanceBetween(pos.latitude, pos.longitude, current.lat, current.lng);
-      }
+      // distance for currently selected (if it exists)
+      final current = _workshops.firstWhere(
+            (w) => w.outletName == currentName,
+        orElse: () => nearest,
+      );
 
-      // Suggest if current distance is > nearest distance by 500m
+      final currentDist = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        current.latitude,
+        current.longitude,
+      );
+
+      // Suggest if current is >500m farther than the nearest choice
       if (currentDist - nearestDist > 500) {
         if (!mounted) return;
         final km = (nearestDist / 1000).toStringAsFixed(1);
 
-        // Schedule dialog after frame to avoid Navigator lock edge cases
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
           final switchIt = await showDialog<bool>(
             context: context,
             builder: (_) => AlertDialog(
               title: const Text('Nearby workshop found'),
-              content: Text('You are about $km km from "${nearest.name}".\nSwitch to this location?'),
+              content: Text(
+                'You are about $km km from "${nearest.outletName}".\nSwitch to this location?',
+              ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Keep current')),
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep current'),
+                ),
                 FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Switch')),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Switch'),
+                ),
               ],
             ),
           );
 
           if (switchIt == true && mounted) {
-            provider.updateLocation(nearest.name);
+            provider.updateLocation(nearest.outletName);
           }
         });
       }
     } catch (_) {
-      // Silently ignore errors (e.g., simulator without location, permission flow interrupted)
+      // swallow location/permission errors quietly
     }
   }
 }
 
 class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
-  const HomeAppBar({super.key, required this.workshops, required this.userName});
-  final String userName; // already non-null
-  final List<_WorkshopLocation> workshops;
+  const HomeAppBar({
+    super.key,
+    required this.workshops,
+    required this.userName,
+  });
+
+  final String userName;
+  final List<Outlet> workshops;
 
   @override
   State<HomeAppBar> createState() => _HomeAppBarState();
@@ -226,25 +250,31 @@ class _HomeAppBarState extends State<HomeAppBar> {
       showDragHandle: true,
       backgroundColor: const Color(0xFF1C1C1E),
       builder: (_) {
+        final items = widget.workshops;
         return SafeArea(
           child: ListView(
             children: [
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Text(
-                  "Choose a workshop",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
-                ),
+                child: Text("Choose a workshop",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
               ),
-              ...widget.workshops.map(
-                    (w) => RadioListTile<String>(
-                  value: w.name,
+              if (items.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    "No outlets found. Please check your data or network.",
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                )
+              else
+                ...items.map((w) => RadioListTile<String>(
+                  value: w.outletName,
                   groupValue: selected,
                   onChanged: (v) => Navigator.pop(context, v),
-                  title: Text(w.name, style: const TextStyle(color: Colors.white)),
+                  title: Text(w.outletName, style: const TextStyle(color: Colors.white)),
                   activeColor: Colors.white,
-                ),
-              ),
+                )),
               const SizedBox(height: 8),
             ],
           ),
@@ -256,6 +286,7 @@ class _HomeAppBarState extends State<HomeAppBar> {
       context.read<LocationProvider>().updateLocation(chosen);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -272,10 +303,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
       scrolledUnderElevation: 3,
       shadowColor: Colors.white70,
       titleSpacing: 8,
-
       title: Row(
         children: [
-          // Logo
           Container(
             width: 36,
             height: 36,
@@ -289,8 +318,6 @@ class _HomeAppBarState extends State<HomeAppBar> {
             ),
           ),
           const SizedBox(width: 10),
-
-          // Titles
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -316,7 +343,6 @@ class _HomeAppBarState extends State<HomeAppBar> {
           ),
         ],
       ),
-
       actions: [
         Row(
           children: [
@@ -392,15 +418,7 @@ class _BellWithDot extends StatelessWidget {
   }
 }
 
-// Small helper model
-class _WorkshopLocation {
-  final String name;
-  final double lat;
-  final double lng;
-  const _WorkshopLocation(this.name, this.lat, this.lng);
-}
-
-// Nice helper for Optional first element
+// handy Optional-first helper (kept from your original)
 extension _FirstOrNull<E> on Iterable<E> {
   E? get firstOrNull => isEmpty ? null : first;
 }

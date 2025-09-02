@@ -215,16 +215,16 @@ class _OtpVerificationState extends State<OtpVerification> {
         body: 'Use $otp to verify your account. Expires at ${_fmtExpiry(expiresAt.toLocal())}',
       );
       // send via edge function
-      final resp = await _supa.functions.invoke(
-        'rapid-action',
-        body: {'to': _email, 'subject': 'Your OTP Code', 'otp': otp},
-      );
-      if (resp.status >= 400) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Resend failed: ${resp.status} ${resp.data}')),
-        );
-        throw 'Failed to send OTP (${resp.status}): ${resp.data}';
-      }
+      // final resp = await _supa.functions.invoke(
+      //   'rapid-action',
+      //   body: {'to': _email, 'subject': 'Your OTP Code', 'otp': otp},
+      // );
+      // if (resp.status >= 400) {
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(content: Text('Resend failed: ${resp.status} ${resp.data}')),
+      //   );
+      //   throw 'Failed to send OTP (${resp.status}): ${resp.data}';
+      // }
 
       if (mounted) {
         final localExpiry = expiresAt.toLocal();  // convert from UTC to device's timezone
