@@ -1,6 +1,8 @@
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/material.dart';
+import 'package:workshop_assignment/Repository/appointment_repo.dart';
 
+import '../Models/Appointment.dart';
 import '../Screen/MakeAppointment.dart';
 import '../Screen/Progress.dart';
 import '../Screen/ServiceFeedback.dart';
@@ -13,21 +15,37 @@ class AppointmentsTab extends StatefulWidget {
 }
 
 class _AppointmentsTabState extends State<AppointmentsTab> {
-  // --- Sample data sets ---
-  final List<Appointment> upcoming = [
-    Appointment(processId: 'PRC-2001', carName: 'Honda Civic', subtitle: '24 Aug, 2:30 PM'),
-    Appointment(processId: 'PRC-2002', carName: 'Toyota Vios', subtitle: '25 Aug, 10:00 AM'),
-    Appointment(processId: 'PRC-2003', carName: 'Perodua Myvi', subtitle: '26 Aug, 4:15 PM'),
-  ];
+  // Use three separate lists for each tab's data
+  List<Appointment> upcoming = [];
+  List<Appointment> completed = [];
+  List<Appointment> cancelled = [];
 
-  final List<Appointment> completed = [
-    Appointment(processId: 'PRC-1890', carName: 'Proton X70', subtitle: '20 Aug, 5:00 PM'),
-    Appointment(processId: 'PRC-1889', carName: 'Honda City', subtitle: '19 Aug, 11:20 AM'),
-  ];
+  bool isLoading = true; // State to manage loading
 
-  final List<Appointment> cancelled = [
-    Appointment(processId: 'PRC-1777', carName: 'Mazda 3', subtitle: '18 Aug, 3:45 PM'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchAppointments();
+  }
+
+  // A dedicated method to fetch and categorize appointments
+  Future<void> _fetchAppointments() async {
+    try {
+      final List<Appointment> allAppointments = await AppointmentRepository().fetchUserAppointments();
+      setState(() {
+        // Filter appointments into their respective lists
+        upcoming = allAppointments.where((appt) => appt.bookingStatus == 'Confirmed').toList();
+        completed = allAppointments.where((appt) => appt.bookingStatus == 'Completed').toList();
+        cancelled = allAppointments.where((appt) => appt.bookingStatus == 'Cancelled').toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Failed to fetch appointments: $e");
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,11 +54,14 @@ class _AppointmentsTabState extends State<AppointmentsTab> {
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text("Appointments",style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),),
+          title: const Text(
+            "Appointments",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
           bottom: ButtonsTabBar(
             backgroundColor: const Color(0xFF9333EA),
             unselectedBackgroundColor: const Color(0xFF1F2937),
@@ -57,18 +78,18 @@ class _AppointmentsTabState extends State<AppointmentsTab> {
             ],
           ),
         ),
-        body: Container(
-          margin: EdgeInsets.only(top: 17),
-          child: TabBarView(
-            children: [
-              _AppointmentsList(stateLabel: "Upcoming", items: upcoming),
-              _AppointmentsList(stateLabel: "Completed", items: completed),
-              _AppointmentsList(stateLabel: "Cancelled", items: cancelled),
-            ],
-          ),
+        body: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+          children: [
+            // Pass the correct list to each TabBarView child
+            _AppointmentsList(stateLabel: "Upcoming", items: upcoming),
+            _AppointmentsList(stateLabel: "Completed", items: completed),
+            _AppointmentsList(stateLabel: "Cancelled", items: cancelled),
+          ],
         ),
         floatingActionButton: FloatingActionButton(
-          shape: const CircleBorder(), // 👈 force circular explicitly
+          shape: const CircleBorder(),
           onPressed: () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const MakeAppointment()));
           },
@@ -80,18 +101,6 @@ class _AppointmentsTabState extends State<AppointmentsTab> {
   }
 }
 
-// Simple model
-class Appointment {
-  final String processId;
-  final String carName;
-  final String subtitle; // date/time text
-  Appointment({
-    required this.processId,
-    required this.carName,
-    required this.subtitle,
-  });
-}
-
 class _AppointmentsList extends StatelessWidget {
   final String stateLabel;
   final List<Appointment> items;
@@ -100,13 +109,13 @@ class _AppointmentsList extends StatelessWidget {
   Color _statusColor(String label) {
     switch (label.toLowerCase()) {
       case 'upcoming':
-        return const Color(0xFFF59E0B); // amber
+        return const Color(0xFFF59E0B);
       case 'completed':
-        return const Color(0xFF10B981); // green
+        return const Color(0xFF10B981);
       case 'cancelled':
-        return const Color(0xFFEF4444); // red
+        return const Color(0xFFEF4444);
       default:
-        return const Color(0xFF9CA3AF); // grey fallback
+        return const Color(0xFF9CA3AF);
     }
   }
 
@@ -124,13 +133,13 @@ class _AppointmentsList extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 12,vertical: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, i) {
         final appt = items[i];
         return Stack(
-          clipBehavior: Clip.none, // 👈 allow overflow
+          clipBehavior: Clip.none,
           children: [
             // 👇 Card as the base
             Card(
@@ -144,24 +153,26 @@ class _AppointmentsList extends StatelessWidget {
                     const Icon(Icons.car_repair, color: Color(0xFF9333EA)),
                   ],
                 ),
-                title: Text("${appt.carName} • ${appt.processId}"),
-                subtitle: Text(appt.subtitle),
+                title: Text("${appt.outlet.outletName} • ${appt.bookingDate.toLocal().toString().split(' ')[0]}"),
+                // Fixed string concatenation here
+                subtitle: Text("${appt.vehicle.brand} - ${appt.vehicle.model} • ${appt.bookingTime}"),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => Progress(
-                        processId: appt.processId,
+                        processId: appt.id,
                       ),
                     ),
                   );
                 },
               ),
             ),
-
             // 👇 Positioned Feedback button overlay
-            stateLabel!="Completed"? SizedBox.shrink(): Positioned(
+            // Corrected conditional logic to show the button for "Completed" appointments
+            stateLabel == "Completed"
+                ? Positioned(
               top: -11,
               right: 60,
               child: ElevatedButton(
@@ -189,12 +200,12 @@ class _AppointmentsList extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+            )
+                : const SizedBox.shrink(),
           ],
         );
       },
     );
-
   }
 }
 

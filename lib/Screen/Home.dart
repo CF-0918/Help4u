@@ -72,8 +72,9 @@ class _HomeState extends State<Home> {
 
       final provider = context.read<LocationProvider>();
       if (outlets.isNotEmpty &&
-          !outlets.any((o) => o.outletName == provider.locationName)) {
-        provider.updateLocation(outlets.first.outletName);
+          !outlets.any((o) => o.outletID == provider.locationId)) {
+        // Correctly initialize with the first outlet's ID if no location is selected
+        provider.updateLocation(outlets.first.outletID);
       }
 
       setState(() => _workshops = outlets);
@@ -170,14 +171,14 @@ class _HomeState extends State<Home> {
       }
 
       final provider = context.read<LocationProvider>();
-      final currentName = provider.locationName;
+      final currentId = provider.locationId;
 
       // If already selected, do nothing
-      if (currentName == nearest.outletName) return;
+      if (currentId == nearest.outletID) return;
 
       // distance for currently selected (if it exists)
       final current = _workshops.firstWhere(
-            (w) => w.outletName == currentName,
+            (w) => w.outletID == currentId,
         orElse: () => nearest,
       );
 
@@ -216,7 +217,8 @@ class _HomeState extends State<Home> {
           );
 
           if (switchIt == true && mounted) {
-            provider.updateLocation(nearest.outletName);
+            // Correctly update with the outlet's ID
+            provider.updateLocation(nearest.outletID);
           }
         });
       }
@@ -269,7 +271,7 @@ class _HomeAppBarState extends State<HomeAppBar> {
                 )
               else
                 ...items.map((w) => RadioListTile<String>(
-                  value: w.outletName,
+                  value: w.outletID,
                   groupValue: selected,
                   onChanged: (v) => Navigator.pop(context, v),
                   title: Text(w.outletName, style: const TextStyle(color: Colors.white)),
@@ -290,7 +292,11 @@ class _HomeAppBarState extends State<HomeAppBar> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = context.watch<LocationProvider>().locationName;
+    final selected = context.watch<LocationProvider>().locationId;
+
+    // Find the outlet name for the selected ID
+    final selectedOutlet = widget.workshops.firstOrNullWhere((w) => w.outletID == selected);
+    final locationDisplayName = selectedOutlet?.outletName ?? "Select location";
 
     final hour = DateTime.now().hour;
     final greet = hour < 12
@@ -352,7 +358,7 @@ class _HomeAppBarState extends State<HomeAppBar> {
                 width: 170,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  onTap: () => _pickLocation(context, selected),
+                  onTap: () => _pickLocation(context, selected!),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
@@ -366,7 +372,7 @@ class _HomeAppBarState extends State<HomeAppBar> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            selected,
+                            locationDisplayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -420,5 +426,12 @@ class _BellWithDot extends StatelessWidget {
 
 // handy Optional-first helper (kept from your original)
 extension _FirstOrNull<E> on Iterable<E> {
-  E? get firstOrNull => isEmpty ? null : first;
+  E? firstOrNullWhere(bool Function(E element) test) {
+    for (var element in this) {
+      if (test(element)) {
+        return element;
+      }
+    }
+    return null;
+  }
 }

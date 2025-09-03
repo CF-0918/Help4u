@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 class LocationProvider extends ChangeNotifier{
-  String locationName;
-  LocationProvider({this.locationName="Abu Workshop"});
+  String? locationId;
+  LocationProvider({this.locationId});
 
   void updateLocation(String newLocation){
-    locationName = newLocation;
+    locationId = newLocation;
     notifyListeners();
   }
 
