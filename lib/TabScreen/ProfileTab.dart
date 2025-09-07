@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 import 'package:workshop_assignment/Repository/user_repo.dart';
+import 'package:workshop_assignment/Screen/CaseHistory.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 
 import '../Models/UserProfile.dart';
@@ -13,6 +14,8 @@ import '../Models/UserProfile.dart';
 import '../Screen/ChangePassword.dart';
 import '../Screen/EditProfile.dart';
 import '../Screen/MyFeedback.dart';
+import '../Screen/MyVehicle.dart';
+import '../Screen/Rewards.dart';
 import '../Screen/Settings.dart';
 import '../Screen/LogOut.dart';
 import '../Screen/ServiceReminder.dart';
@@ -42,10 +45,11 @@ class ProfileTabItem {
 final List<ProfileTabItem> profileTabsList = [
   ProfileTabItem(icon: Icons.person,        label: 'Edit Profile',        builder: (_) => const EditProfile()),
   ProfileTabItem(icon: Icons.lock,          label: 'Change Password',     builder: (_) => const ChangePassword()),
-  ProfileTabItem(icon: Icons.history,       label: 'Appointment History', builder: (_) => const Servicereminder()),
+  ProfileTabItem(icon: Icons.history,       label: 'Case History', builder: (_) => const CaseHistory()),
+  ProfileTabItem(icon: Icons.car_rental,      label: 'My Vehicle',         builder: (_) => const MyVehicle()),
   ProfileTabItem(icon: Icons.note_alt,      label: 'My Feedback',         builder: (_) => const MyFeedback()),
   ProfileTabItem(icon: Icons.notifications, label: 'Service Reminder',    builder: (_) => const Servicereminder()),
-  ProfileTabItem(icon: Icons.card_giftcard, label: 'Vouchers & Rewards',  builder: (_) => const Servicereminder()),
+  ProfileTabItem(icon: Icons.card_giftcard, label: 'Vouchers & Rewards',  builder: (_) => const Rewards()),
   ProfileTabItem(icon: Icons.settings,      label: 'Settings',            builder: (_) => const Settings()),
   ProfileTabItem(icon: Icons.logout,        label: 'Log out',             builder: (_) => const LogOut()),
 ];
