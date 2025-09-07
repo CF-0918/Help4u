@@ -37,6 +37,102 @@ class AppointmentRepository {
     }
   }
 
+  // Future<String>getLastestAppointmentId(){
+  //       Map<String, dynamic> lastestAppointmentId = _client
+  //       .from('bookings')
+  //       .select('booking_id')
+  //       .order('created_at', ascending: false)
+  //       .limit(1)
+  //       .single()
+  //       .then((value) => value as Map<String,dynamic>);
+  //
+  //       lastestAppointmentId['booking_id'];
+  //       Extartc "Appt-001"
+  //
+  //       if no appointment return Appt-001
+  //
+  // }
+
+  Future<List<Appointment>> fetchUpcomingAppointments() async {
+    try {
+      final String? userId = _authService.currentUserId;
+      if (userId == null) {
+        throw Exception('User is not logged in.');
+      }
+
+      final response = await _client
+          .from('bookings')
+          .select('*, user_profiles(*), outlets(*), service_type(*),vehicle(*)')
+          .eq('userid', userId)
+          .eq("bookingstatus", "Confirmed")
+      // Use gte for 'greater than or equal to' today's date
+          .gte('bookingdate', DateTime.now().toIso8601String().split('T').first)
+          .order('bookingdate', ascending: true)
+          .order('bookingtime', ascending: true);
+
+      if (response is List) {
+        return response.map((item) => Appointment.fromJson(item)).toList();
+      } else {
+        throw Exception('Unexpected response format');
+      }
+    } catch (e) {
+      print("Error fetching upcoming appointments: $e");
+      return [];
+    }
+  }
+
+  /// Fetches a list of completed appointments for the currently logged-in user.
+  Future<List<Appointment>> fetchCompletedAppointments() async {
+    try {
+      final String? userId = _authService.currentUserId;
+      if (userId == null) {
+        throw Exception('User is not logged in.');
+      }
+
+      final response = await _client
+          .from('bookings')
+          .select('*, user_profiles(*), outlets(*), service_type(*),vehicle(*)')
+          .eq('userid', userId)
+          .eq("bookingstatus", "Completed")
+          .order('bookingdate', ascending: false); // Order by date descending for completed
+
+      if (response is List) {
+        return response.map((item) => Appointment.fromJson(item)).toList();
+      } else {
+        throw Exception('Unexpected response format');
+      }
+    } catch (e) {
+      print("Error fetching completed appointments: $e");
+      return [];
+    }
+  }
+
+  /// Fetches a list of cancelled appointments for the currently logged-in user.
+  Future<List<Appointment>> fetchCancelledAppointments() async {
+    try {
+      final String? userId = _authService.currentUserId;
+      if (userId == null) {
+        throw Exception('User is not logged in.');
+      }
+
+      final response = await _client
+          .from('bookings')
+          .select('*, user_profiles(*), outlets(*), service_type(*),vehicle(*)')
+          .eq('userid', userId)
+          .eq("bookingstatus", "Cancelled")
+          .order('bookingdate', ascending: false);
+
+      if (response is List) {
+        return response.map((item) => Appointment.fromJson(item)).toList();
+      } else {
+        throw Exception('Unexpected response format');
+      }
+    } catch (e) {
+      print("Error fetching cancelled appointments: $e");
+      return [];
+    }
+  }
+
   // Fetches all existing bookings for a specific date and outlet.
   Future<List<Map<String, dynamic>>> fetchBookingsForDateAndOutlet({
     required String outletID,
@@ -97,4 +193,58 @@ class AppointmentRepository {
       rethrow;
     }
   }
+
+  Future<void> cancelAppointment(String bookingId) async {
+    try {
+      await _client
+          .from('bookings')
+          .update({'bookingstatus': 'Cancelled'})
+          .eq('booking_id', bookingId);
+      print("Appointment cancelled successfully!");
+    } catch (e) {
+      print("Error cancelling appointment: $e");
+      rethrow;
+    }
+  }
+
+  Future<Appointment>fetchUserAppointmentsById(String bookingId)async{
+    try {
+      final String? userId = _authService.currentUserId;
+      if (userId == null) {
+        throw Exception('User is not logged in.');
+      }
+
+      // Use a nested select to get all the related data. Supabase table names are lowercase.
+      final response = await _client
+          .from('bookings')
+          .select('*, user_profiles(*), outlets(*), service_type(*),vehicle(*)')
+          .eq('userid', userId)
+          .eq('booking_id', bookingId)
+          .single();
+
+      // Supabase returns a List<Map<String, dynamic>>
+      if (response is Map<String,dynamic>) {
+        return Appointment.fromJson(response);
+      } else {
+        throw Exception('Unexpected response format');
+      }
+    } catch (e) {
+      print("Error fetching user appointments: $e");
+      rethrow;
+    }
+  }
+
+  Future<void>updateStatus(String bookingId, String status)async{
+    try {
+      await _client
+          .from('bookings')
+          .update({'bookingstatus': status})
+          .eq('booking_id', bookingId);
+      print("Appointment Repo status updated successfully!");
+    } catch (e) {
+      print("Error updating appointment status: $e");
+      rethrow;
+    }
+  }
+
 }

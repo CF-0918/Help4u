@@ -67,9 +67,9 @@ class _MakeAppointmentState extends State<MakeAppointment> {
   @override
   void initState() {
     super.initState();
-    _initData();
     _focusedDay = DateTime.now();
     _selectedDay = _focusedDay;
+    _initData();
   }
 
   Future<void> _initData() async {
@@ -101,8 +101,6 @@ class _MakeAppointmentState extends State<MakeAppointment> {
   Future<void> _fetchUserCars() async {
     try {
       List<Vehicle> fetchedCars = await VehicleRepository().fetchUserCars();
-      print(fetchedCars);
-      print("Car is priented");
       cars = fetchedCars;
     } catch (e) {
       debugPrint("Failed to fetch cars: $e");
@@ -169,7 +167,8 @@ class _MakeAppointmentState extends State<MakeAppointment> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Appointment booked successfully!')),
         );
-        Navigator.of(context).pop();
+        // Navigate back to the previous page (AppointmentsTab)
+        Navigator.pop(context);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to book appointment. Please try again.')),
@@ -480,8 +479,9 @@ class _MakeAppointmentState extends State<MakeAppointment> {
                     spacing: 10,
                     runSpacing: 12,
                     children: timeSlots.map((t) {
-                      // --- Start of new logic to check if time has passed ---
+                      // Get current time and date-only for comparison
                       final DateTime now = DateTime.now();
+                      final DateTime todayDateOnly = DateTime(now.year, now.month, now.day);
                       final List<String> timeParts = t.split(' ');
                       final List<String> hourMinute = timeParts[0].split(':');
                       int hour = int.parse(hourMinute[0]);
@@ -494,8 +494,11 @@ class _MakeAppointmentState extends State<MakeAppointment> {
                       }
 
                       final DateTime slotDateTime = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day, hour, minute);
-                      final bool isTimePassed = _selectedDay!.isBefore(today) || (isSameDay(_selectedDay, today) && slotDateTime.isBefore(now));
-                      // --- End of new logic ---
+
+                      // A slot is "time passed" if:
+                      // 1. The selected day is a previous day.
+                      // 2. OR, if the selected day is today, and the slot's hour is before the current hour.
+                      final bool isTimePassed = _selectedDay!.isBefore(todayDateOnly) || (isSameDay(_selectedDay, todayDateOnly) && slotDateTime.hour < now.hour);
 
                       final int bookingsForSlot = availableSlots[t] ?? 0;
                       final int slotsLeft = maxSlots - bookingsForSlot;

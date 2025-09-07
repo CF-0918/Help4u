@@ -1,54 +1,59 @@
 import 'package:flutter/material.dart';
-import 'package:workshop_assignment/TabScreen/AppointmentsTab.dart';
-import 'package:workshop_assignment/TabScreen/ProfileTab.dart';
+import 'package:intl/intl.dart';
 
+import '../Models/Appointment.dart';
 import '../Screen/Billing.dart';
 import '../Screen/MakeAppointment.dart';
+import '../Screen/Progress.dart';
 
 class HomeTab extends StatelessWidget {
-  // Sample data (replace with your real source)
-  final List<Appointment> appointments = [
-    Appointment(
-      location: 'Petronas Service Center, KLCC',
-      carDetails: 'Toyota Vios • WXY1234',
-      date: DateTime(2025, 8, 25), // runtime value (OK now)
-      time: '2:30 PM',
-    ),
-    Appointment(
-      location: 'Bukit Jalil Workshop',
-      carDetails: 'Honda City • VBG9988',
-      date: DateTime(2025, 8, 22),
-      time: '11:00 AM',
-    ),
-  ];
 
+  // We now accept all data and callbacks as parameters.
+  final Function(int) onTabSelected;
+  final bool isLoading;
+  final int completedPercentage;
+  final double rating;
+  final double ratingChange;
+  final List<Appointment> appointments;
+  final List<Appointment> completedAppointments;
 
-  HomeTab({super.key});
+  const HomeTab({
+    super.key,
+    required this.onTabSelected,
+    required this.isLoading,
+    required this.completedPercentage,
+    required this.rating,
+    required this.ratingChange,
+    required this.appointments,
+    required this.completedAppointments,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = Theme.of(context).cardColor; // or const Color(0xFF1C1C1E)
+    final cardBg = Theme.of(context).cardColor;
+    final Color completedDeltaColor = completedPercentage > 0 ? Colors.green : Colors.white;
 
-    return SingleChildScrollView(
+    return isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-
           GestureDetector(
-            onTap: (){
-              Navigator.push(context, MaterialPageRoute(builder: (context)=>Billing()));
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const Billing()));
             },
             child: Container(
-              margin: EdgeInsets.symmetric(vertical: 10),
+              margin: const EdgeInsets.symmetric(vertical: 10),
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
-                color: Colors.red.shade700, // deeper red
+                color: Colors.red.shade700,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: Colors.red.shade900, width: 2),
               ),
-              child: Row(
-                children: const [
+              child: const Row(
+                children: [
                   Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
                   SizedBox(width: 8),
                   Expanded(
@@ -66,7 +71,6 @@ class HomeTab extends StatelessWidget {
               ),
             ),
           ),
-
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,9 +83,10 @@ class HomeTab extends StatelessWidget {
                       color: Colors.purple,
                       size: 30,
                     ),
-                    deltaText: "+12%",
-                    value: "24",
+                    deltaText: "$completedPercentage %",
+                    value: "${completedAppointments.length}",
                     subtitle: "Completed Appointments",
+                    deltaColor: completedDeltaColor,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -89,16 +94,16 @@ class HomeTab extends StatelessWidget {
                   child: StatCard(
                     background: cardBg,
                     leading: const Icon(Icons.star, color: Colors.amber, size: 30),
-                    deltaText: "+5%",
-                    value: "4.8",
+                    deltaText: "${ratingChange.toStringAsFixed(1)} %",
+                    value: "${rating.toStringAsFixed(1)}",
                     subtitle: "Average Rating",
+                    deltaColor: Colors.white,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-
           // Quick Actions
           Container(
             margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
@@ -112,8 +117,7 @@ class HomeTab extends StatelessWidget {
             children: [
               Expanded(
                 child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: const Color(0xFF9333EA),
@@ -129,9 +133,9 @@ class HomeTab extends StatelessWidget {
                           );
                         },
                         icon: const Icon(Icons.book_online, size: 25),
-                        label: const Text('Make Appoinments'),
+                        label: const Text('Make Appointments'),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.white, // text & icon color
+                          foregroundColor: Colors.white,
                           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
@@ -143,8 +147,7 @@ class HomeTab extends StatelessWidget {
               const SizedBox(width: 20),
               Expanded(
                 child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: const Color(0xFF1F2937),
@@ -155,14 +158,12 @@ class HomeTab extends StatelessWidget {
                     children: [
                       TextButton.icon(
                         onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const AppointmentsTab()),
-                          );
+                          onTabSelected(1);
                         },
                         icon: const Icon(Icons.history, size: 25),
                         label: const Text('View History'),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.white, // text & icon color
+                          foregroundColor: Colors.white,
                           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
@@ -173,21 +174,21 @@ class HomeTab extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
           // Upcoming Appointments
           Container(
             margin: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Upcoming Appointments",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  "Upcoming Appointments (${appointments.length})",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    onTabSelected(0);
+                  },
                   child: const Text(
                     "View All",
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -196,19 +197,15 @@ class HomeTab extends StatelessWidget {
               ],
             ),
           ),
-
-          // List inside scroll view → make it non-scrollable + shrinkWrap
-          ListView.builder(
+          ListView.separated(
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: appointments.length,
             itemBuilder: (context, i) {
               final a = appointments[i];
               return UpComingAppointmentsCard(
-                location: a.location,
-                carDetails: a.carDetails,
-                date: a.date,
-                time: a.time,
+                appointment: a,
               );
             },
           ),
@@ -224,6 +221,7 @@ class StatCard extends StatelessWidget {
   final String deltaText;
   final String value;
   final String subtitle;
+  final Color deltaColor;
 
   const StatCard({
     super.key,
@@ -232,6 +230,7 @@ class StatCard extends StatelessWidget {
     required this.deltaText,
     required this.value,
     required this.subtitle,
+    required this.deltaColor,
   });
 
   @override
@@ -255,9 +254,9 @@ class StatCard extends StatelessWidget {
               const Spacer(),
               Text(
                 deltaText,
-                style: const TextStyle(
+                style: TextStyle(
                   letterSpacing: 1.1,
-                  color: Color(0xFF35D07F),
+                  color: deltaColor,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
@@ -290,132 +289,187 @@ class StatCard extends StatelessWidget {
   }
 }
 
-// Simple model to keep things typed
-class Appointment {
-  final String location;
-  final String carDetails;
-  final DateTime date;
-  final String time;
-  const Appointment({
-    required this.location,
-    required this.carDetails,
-    required this.date,
-    required this.time,
-  });
-}
-
 class UpComingAppointmentsCard extends StatelessWidget {
-  final String location;
-  final String carDetails;
-  final DateTime date; // appointment date
-  final String time;   // e.g., "2:30 PM"
+  final Appointment appointment;
 
   const UpComingAppointmentsCard({
     super.key,
-    required this.location,
-    required this.carDetails,
-    required this.date,
-    required this.time,
+    required this.appointment,
   });
 
-  String _friendlyWhen(DateTime target) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final onlyDate = DateTime(target.year, target.month, target.day);
-    final diffDays = onlyDate.difference(today).inDays;
+  Color _statusColor(String label) {
+    switch (label.toLowerCase()) {
+      case 'upcoming':
+        return const Color(0xFFF59E0B);
+      case 'confirmed':
+        return const Color(0xFFF59E0B);
+      case 'completed':
+        return const Color(0xFF10B981);
+      case 'cancelled':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF9CA3AF);
+    }
+  }
 
-    if (diffDays < 0) return 'Past';
-    if (diffDays == 0) return 'Today';
-    if (diffDays == 1) return 'Tomorrow';
-    return 'In $diffDays days';
+  Widget _buildInfoRow({required IconData icon, required String label, required String value}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.white70),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final when = _friendlyWhen(date);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final bookingDay = DateTime(appointment.bookingDate.year, appointment.bookingDate.month, appointment.bookingDate.day);
+    final difference = bookingDay.difference(today).inDays;
+    final dotColor = _statusColor(appointment.bookingStatus);
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Progress(
+              bookingId: appointment.id,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2937),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.event_available, size: 28, color: Colors.green),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // When label (Today/Tomorrow/In X days)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9333EA),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      when,
+            // Top Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    _StatusDot(color: dotColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      appointment.outlet.outletName,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
                         color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: dotColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-
-                  const SizedBox(height: 6),
-                  // Location
-                  Row(
-                    children: [
-                      const Icon(Icons.place, size: 18, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          location,
-                          style: const TextStyle(fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    difference == 0 ? "Today" : '$difference days',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  // Car details
-                  Row(
-                    children: [
-                      const Icon(Icons.directions_car, size: 18, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          carDetails,
-                          style: const TextStyle(fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Car and Service Info
+            _buildInfoRow(
+              icon: Icons.directions_car_filled,
+              label: '${appointment.vehicle.brand} ${appointment.vehicle.model}',
+              value: appointment.vehicle.plateNo,
+            ),
+            _buildInfoRow(
+              icon: Icons.build,
+              label: 'Service Type',
+              value: appointment.serviceType.name,
+            ),
+            _buildInfoRow(
+              icon: Icons.speed,
+              label: 'Mileage',
+              value: '${appointment.mileage} KM',
+            ),
+            const SizedBox(height: 12),
+            // Date and Time Info
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat.yMMMd().format(appointment.bookingDate),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
                   ),
-                  const SizedBox(height: 6),
-                  // Date & time
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 18, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${date.day.toString().padLeft(2, '0')}-'
-                            '${date.month.toString().padLeft(2, '0')}-'
-                            '${date.year}  •  $time',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ],
+                ),
+                const SizedBox(width: 16),
+                const Icon(Icons.access_time, size: 16, color: Colors.white70),
+                const SizedBox(width: 8),
+                Text(
+                  appointment.bookingTime,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  final Color color;
+  const _StatusDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

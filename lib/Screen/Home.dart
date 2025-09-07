@@ -5,9 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 import 'package:workshop_assignment/Repository/user_repo.dart';
 import 'package:workshop_assignment/Repository/outlet_repo.dart';
+import 'package:workshop_assignment/Repository/appointment_repo.dart';
 
 import '../Models/UserProfile.dart';
 import '../Models/Outlet.dart';
+import '../Models/Appointment.dart';
 import '../TabScreen/HomeTab.dart';
 import '../TabScreen/ProgressTab.dart';
 import '../TabScreen/AppointmentsTab.dart';
@@ -24,35 +26,44 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   final UserRepository _userRepo = UserRepository();
   final AuthService _authService = AuthService();
+  final AppointmentRepository _appointmentRepo = AppointmentRepository();
 
   String? uid;
   UserProfile? userDetails;
 
   bool _busy = false;
   int _current = 0;
+  int _appointmentsTabIndex = 0;
 
-  /// Outlets pulled from Supabase
+  // New state variables to pass to HomeTab
+  int completedPercentage = 0;
+  double rating = 0.0;
+  double ratingChange = 0.0;
+  List<Appointment> appointments = [];
+  List<Appointment> completedAppointments = [];
+
+  late PageController _pageController;
+
   List<Outlet> _workshops = [];
-
-  late final List<Widget> _pages =
-  [
-    HomeTab(),
-    ProgressTab(),
-    AppointmentsTab(),
-    ProfileTab(),
-  ];
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _current);
+
     uid = _authService.currentUser?.id;
     _initData();
 
-    // separate “after first frame” work so it never collides with build/nav
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _maybeSuggestNearest(context);
     });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -66,18 +77,33 @@ class _HomeState extends State<Home> {
         setState(() => userDetails = user);
       }
 
-      // If your DB values might be “Active/ACTIVE”, our repo ilike will match.
       final outlets = await OutletRepo().fetchOutlets(status: 'active');
       if (!mounted) return;
 
       final provider = context.read<LocationProvider>();
-      if (outlets.isNotEmpty &&
-          !outlets.any((o) => o.outletID == provider.locationId)) {
-        // Correctly initialize with the first outlet's ID if no location is selected
+      if (outlets.isNotEmpty && !outlets.any((o) => o.outletID == provider.locationId)) {
         provider.updateLocation(outlets.first.outletID);
       }
 
-      setState(() => _workshops = outlets);
+      // Fetch appointments data
+      final data = await _appointmentRepo.fetchUpcomingAppointments();
+      final completedData = await _appointmentRepo.fetchCompletedAppointments();
+      final cancelledData = await _appointmentRepo.fetchCancelledAppointments();
+
+      final totalAppointments = data.length + completedData.length + cancelledData.length;
+      final newCompletedPercentage = totalAppointments > 0 ? ((completedData.length / totalAppointments) * 100).toInt() : 0;
+      final newRating = 4.5;
+      final newRatingChange = 2.3;
+
+      setState(() {
+        _workshops = outlets;
+        appointments = data;
+        completedAppointments = completedData;
+        completedPercentage = newCompletedPercentage;
+        rating = newRating;
+        ratingChange = newRatingChange;
+      });
+
     } catch (e) {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -92,26 +118,64 @@ class _HomeState extends State<Home> {
     }
   }
 
+  void _onItemTapped(int index) {
+    setState(() {
+      _current = index;
+    });
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _onTabSelected(int index) {
+    setState(() {
+      _appointmentsTabIndex = index;
+    });
+    _onItemTapped(2);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      HomeTab(
+        onTabSelected: _onTabSelected,
+        isLoading: _busy,
+        completedPercentage: completedPercentage,
+        rating: rating,
+        ratingChange: ratingChange,
+        appointments: appointments,
+        completedAppointments: completedAppointments,
+      ),
+      const ProgressTab(),
+      AppointmentsTab(initialIndex: _appointmentsTabIndex),
+      const ProfileTab(),
+    ];
+
     return Scaffold(
       backgroundColor: Colors.black,
-
       appBar: _current == 0
           ? HomeAppBar(
         userName: userDetails?.name ?? 'User',
         workshops: _workshops,
       )
           : null,
-
       body: Stack(
         children: [
-          IndexedStack(index: _current, children: _pages),
+          PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _current = index;
+              });
+            },
+            children: pages,
+          ),
           if (_busy) const ModalBarrier(dismissible: false, color: Color(0x88000000)),
           if (_busy) const Center(child: CircularProgressIndicator()),
         ],
       ),
-
       bottomNavigationBar: BottomNavigationBar(
         selectedIconTheme: const IconThemeData(color: Colors.white),
         unselectedIconTheme: const IconThemeData(color: Colors.grey),
@@ -121,9 +185,9 @@ class _HomeState extends State<Home> {
         backgroundColor: Colors.black,
         elevation: 0,
         showSelectedLabels: true,
-        showUnselectedLabels: false,
+        showUnselectedLabels: true,
         currentIndex: _current,
-        onTap: (index) => setState(() => _current = index),
+        onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.car_rental), label: 'Progress'),
@@ -138,71 +202,43 @@ class _HomeState extends State<Home> {
   Future<void> _maybeSuggestNearest(BuildContext context) async {
     try {
       if (_workshops.isEmpty) return;
-
       final enabled = await Geolocator.isLocationServiceEnabled();
       if (!enabled) return;
-
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
         return;
       }
-
       final pos = await Geolocator.getCurrentPosition();
-
-      // Find nearest outlet
       Outlet nearest = _workshops.first;
       double nearestDist = double.infinity;
-
       for (final w in _workshops) {
-        final d = Geolocator.distanceBetween(
-          pos.latitude,
-          pos.longitude,
-          w.latitude,
-          w.longitude,
-        );
+        final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, w.latitude, w.longitude);
         if (d < nearestDist) {
           nearestDist = d;
           nearest = w;
         }
       }
-
       final provider = context.read<LocationProvider>();
       final currentId = provider.locationId;
-
-      // If already selected, do nothing
       if (currentId == nearest.outletID) return;
-
-      // distance for currently selected (if it exists)
-      final current = _workshops.firstWhere(
-            (w) => w.outletID == currentId,
-        orElse: () => nearest,
-      );
-
-      final currentDist = Geolocator.distanceBetween(
-        pos.latitude,
-        pos.longitude,
-        current.latitude,
-        current.longitude,
-      );
-
-      // Suggest if current is >500m farther than the nearest choice
+      final current = _workshops.firstOrNullWhere((w) => w.outletID == currentId);
+      double currentDist = double.infinity;
+      if (current != null) {
+        currentDist = Geolocator.distanceBetween(pos.latitude, pos.longitude, current.latitude, current.longitude);
+      }
       if (currentDist - nearestDist > 500) {
         if (!mounted) return;
         final km = (nearestDist / 1000).toStringAsFixed(1);
-
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
           final switchIt = await showDialog<bool>(
             context: context,
             builder: (_) => AlertDialog(
               title: const Text('Nearby workshop found'),
-              content: Text(
-                'You are about $km km from "${nearest.outletName}".\nSwitch to this location?',
-              ),
+              content: Text('You are about $km km from "${nearest.outletName}".\nSwitch to this location?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -215,9 +251,7 @@ class _HomeState extends State<Home> {
               ],
             ),
           );
-
           if (switchIt == true && mounted) {
-            // Correctly update with the outlet's ID
             provider.updateLocation(nearest.outletID);
           }
         });
@@ -289,19 +323,13 @@ class _HomeAppBarState extends State<HomeAppBar> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final selected = context.watch<LocationProvider>().locationId;
-
-    // Find the outlet name for the selected ID
     final selectedOutlet = widget.workshops.firstOrNullWhere((w) => w.outletID == selected);
     final locationDisplayName = selectedOutlet?.outletName ?? "Select location";
-
     final hour = DateTime.now().hour;
-    final greet = hour < 12
-        ? 'Morning'
-        : (hour < 18 ? 'Afternoon' : 'Evening');
+    final greet = hour < 12 ? 'Morning' : (hour < 18 ? 'Afternoon' : 'Evening');
 
     return AppBar(
       backgroundColor: Colors.black,
@@ -424,7 +452,6 @@ class _BellWithDot extends StatelessWidget {
   }
 }
 
-// handy Optional-first helper (kept from your original)
 extension _FirstOrNull<E> on Iterable<E> {
   E? firstOrNullWhere(bool Function(E element) test) {
     for (var element in this) {
