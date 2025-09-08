@@ -5,12 +5,14 @@ class ServiceType {
   final String name;
   final String? description;
   final double? price;
+  final int interval_months; // New field for interval in months
 
   ServiceType({
     required this.id,
     required this.name,
     this.description,
     this.price,
+    required this.interval_months,
   });
 
   /// Factory constructor to create a ServiceType instance from a JSON map.
@@ -23,6 +25,7 @@ class ServiceType {
       // Supabase's 'numeric' type is often returned as a double or an int.
       // We safely cast it to a double.
       price: (json['price'] as num?)?.toDouble(),
+      interval_months: json['interval_months'] as int,
     );
   }
 
@@ -34,6 +37,7 @@ class ServiceType {
       'name': name,
       'description': description,
       'price': price,
+      'interval_months': interval_months,
     };
   }
 }

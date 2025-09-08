@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:workshop_assignment/Repository/serviceReminder_repo.dart';
+import 'package:workshop_assignment/authencation/auth_service.dart';
+import 'package:uuid/uuid.dart';
+
 import '../Components/Timeline_tile.dart';      // your MyStepTile
-import '../Models/Case.dart';                    // CaseModel + CaseStatus
-import '../Repository/case_repo.dart';           // CasesRepo
+import '../Models/Case.dart';
+import '../Repository/case_repo.dart';                    // CaseModel + CaseStatus
+
+import '../Repository/serviceReminder_repo.dart';
+import '../models/serviceReminder.dart';
 
 class Progress extends StatefulWidget {
   final String bookingId;                        // pass the appointment's booking_id
@@ -22,6 +29,8 @@ class _ProgressState extends State<Progress> {
 
   bool _loading = true;
   CaseModel? _case;
+
+  AuthService authService=AuthService();
 
   // ========= Timeline config =========
   static const List<CaseStatus> _ordered = [
@@ -88,20 +97,80 @@ class _ProgressState extends State<Progress> {
     }
   }
 
-  Future<void>_updateCaseStatus(CaseStatus status) async {
+  Future<void> _updateCaseStatus(CaseStatus status) async {
     if (_case == null) return;
+
     try {
       await _casesRepo.updateCaseStatus(_case!.caseId, status);
+
+      if (status == CaseStatus.done) {
+        final now = DateTime.now();
+        final months = _case!.appointment?.serviceType.interval_months ?? 6; // fallback 6
+        final nextDue = DateTime(
+          now.year,
+          now.month + months,
+          now.day,
+          now.hour,
+          now.minute,
+          now.second,
+        );
+
+        final String? svcTypeId = _case!.appointment?.serviceType.id;
+        if (svcTypeId == null || svcTypeId.isEmpty) {
+          throw Exception('Missing serviceTypeId for new service reminder.');
+        }
+
+        final reminder = ServiceReminder(
+          id:  const Uuid().v4(), // model requires non-null id
+          userId: authService.currentUserId!,
+          vehiclePlate: _case!.appointment!.vehicle.plateNo,
+          serviceTypeId: svcTypeId,
+          nextDueDate: nextDue,
+          lastCompletedAt: now,
+          status: ServiceReminderStatus.active,
+          notes: 'System Generated Time for your next service!',
+          createdAt: now,
+          updatedAt: now,
+        );
+
+        await _insertNewServiceReminder(serviceReminder: reminder);
+      }
+
       if (!mounted) return;
+
+      final message = status == CaseStatus.done
+          ? 'Case updated and service reminder has been added'
+          : 'Case status updated successfully';
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Case status updated successfully')),
+        SnackBar(content: Text(message)),
       );
-      // Reload the case to reflect changes
       await _load();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update case status: $e')),
+      );
+    }
+  }
+
+  Future<void> _insertNewServiceReminder({
+    required ServiceReminder serviceReminder,
+  }) async {
+    if (_case == null) return;
+
+    try {
+      final repo = ServiceReminderRepository();
+      await repo.create(serviceReminder, includeId: true);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('New service reminder inserted successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to insert service reminder: $e')),
       );
     }
   }

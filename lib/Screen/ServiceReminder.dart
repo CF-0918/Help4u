@@ -1,747 +1,492 @@
-import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+import 'package:workshop_assignment/authencation/auth_service.dart';
 
-/// ---- Status logic (top-level) ----
+import '../Repository/serviceReminder_repo.dart';
+import '../models/serviceReminder.dart';
 
-enum ReminderStatus { overdue, today, upcoming, later, completed }
+/// Brand colors (kept your vibe)
+const _brandPurple = Color(0xFF9333EA);
+const _cardBg = Color(0xFF171A21); // subtle dark
+const _chipBg = Color(0xFF2A2F3A);
 
-class _StatusMeta {
-  final String label;
-  final Color color;
-  const _StatusMeta(this.label, this.color);
-}
+/// Status → color/label
+Color _statusColor(ServiceReminderStatus s) => switch (s) {
+  ServiceReminderStatus.active => Colors.blue,
+  ServiceReminderStatus.done => Colors.green,
+  ServiceReminderStatus.snoozed => Colors.indigo,
+  ServiceReminderStatus.cancelled => Colors.grey,
+};
+String _statusLabel(ServiceReminderStatus s) => switch (s) {
+  ServiceReminderStatus.active => 'Active',
+  ServiceReminderStatus.done => 'Done',
+  ServiceReminderStatus.snoozed => 'Snoozed',
+  ServiceReminderStatus.cancelled => 'Cancelled',
+};
 
-ReminderStatus calcStatus(DateTime dueDate, {bool completed = false}) {
-  if (completed) return ReminderStatus.completed;
+String _fmtDate(DateTime d) =>
+    "${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}";
 
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+enum _TabFilter { all, active, done, snoozed, cancelled }
 
-  if (due.isBefore(today)) return ReminderStatus.overdue;
-  if (due.isAtSameMomentAs(today)) return ReminderStatus.today;
-
-  final days = due.difference(today).inDays;
-  if (days <= 7) return ReminderStatus.upcoming;
-
-  return ReminderStatus.later; // beyond 7 days
-}
-
-_StatusMeta statusMeta(ReminderStatus s) {
-  switch (s) {
-    case ReminderStatus.overdue:
-      return const _StatusMeta('Overdue', Colors.red);
-    case ReminderStatus.today:
-      return const _StatusMeta('Due today', Colors.deepOrange);
-    case ReminderStatus.upcoming:
-      return const _StatusMeta('Upcoming', Colors.amber);
-    case ReminderStatus.completed:
-      return const _StatusMeta('Completed', Colors.green);
-    case ReminderStatus.later:
-      return _StatusMeta('Scheduled', Colors.blueGrey.shade600);
-  }
-}
-
-/// Simple data model
-class ReminderItem {
-   String subjectTitle;
-   String carName;
-   String mileage; // keep string for display
-   DateTime date;
-  bool isCompleted;
-
-  ReminderItem({
-    required this.subjectTitle,
-    required this.carName,
-    required this.mileage,
-    required this.date,
-    this.isCompleted = false,
-  });
-}
-
-/// ---- Page ----
-
-class Servicereminder extends StatefulWidget {
-  const Servicereminder({super.key});
+class ServiceReminderPage extends StatefulWidget {
+   ServiceReminderPage({super.key});
+  final String currentUserId=AuthService().currentUser!.id;
 
   @override
-  State<Servicereminder> createState() => _ServicereminderState();
+  State<ServiceReminderPage> createState() => _ServiceReminderPageState();
 }
 
-class _ServicereminderState extends State<Servicereminder> {
-  // Demo data — replace with your real data source
-  final List<ReminderItem> _reminders = [
-    ReminderItem(
-      subjectTitle: "Service Reminder",
-      carName: "Honda Civic",
-      mileage: "12345",
-      date: DateTime.now().subtract(const Duration(days: 1)), // overdue
-    ),
-    ReminderItem(
-      subjectTitle: "Brake Check",
-      carName: "Perodua Myvi",
-      mileage: "50210",
-      date: DateTime.now(), // today
-    ),
-    ReminderItem(
-      subjectTitle: "Engine Oil",
-      carName: "Toyota Vios",
-      mileage: "68000",
-      date: DateTime.now().add(const Duration(days: 3)), // upcoming
-    ),
-    ReminderItem(
-      subjectTitle: "Tire Rotation",
-      carName: "Proton X50",
-      mileage: "30000",
-      date: DateTime.now().add(const Duration(days: 20)), // later (>7)
-    ),
-    ReminderItem(
-      subjectTitle: "Air Filter",
-      carName: "Mazda 3",
-      mileage: "41000",
-      date: DateTime.now().subtract(const Duration(days: 10)),
-      isCompleted: true, // completed
-    ),
-  ];
+class _ServiceReminderPageState extends State<ServiceReminderPage> {
+  final _repo = ServiceReminderRepository();
+  final _uuid = const Uuid();
 
-  int get _overdueCount => _reminders
-      .where((r) => calcStatus(r.date, completed: r.isCompleted) == ReminderStatus.overdue)
-      .length;
+  bool _loading = true;
+  String? _error;
+  List<ServiceReminder> _items = [];
+  _TabFilter _tab = _TabFilter.all;
+  String _query = '';
 
-  int get _upcomingCount => _reminders
-      .where((r) => calcStatus(r.date, completed: r.isCompleted) == ReminderStatus.upcoming)
-      .length;
+  String get _userId => widget.currentUserId;
 
-  int get _completedCount => _reminders
-      .where((r) => calcStatus(r.date, completed: r.isCompleted) == ReminderStatus.completed)
-      .length;
-
-  List<ReminderItem> _filter(ReminderStatus? filter) {
-    if (filter == null) return _reminders; // All
-    return _reminders
-        .where((r) => calcStatus(r.date, completed: r.isCompleted) == filter)
-        .toList();
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  Future<Map<String, dynamic>?> _editDialog(ReminderItem item) async {
-    final formKey = GlobalKey<FormState>();
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rows = await _repo.fetchForCurrentUser(_userId);
+      rows.sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate));
+      setState(() => _items = rows);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-    // Start with current values
-    String subject = item.subjectTitle;
-    String car     = item.carName;
-    String mileage = item.mileage;
-    DateTime due   = item.date;
+  // ---------- Derived list (filter + search) ----------
+  List<ServiceReminder> get _visible {
+    Iterable<ServiceReminder> list = _items;
+    switch (_tab) {
+      case _TabFilter.active:
+        list = list.where((r) => r.status == ServiceReminderStatus.active);
+        break;
+      case _TabFilter.done:
+        list = list.where((r) => r.status == ServiceReminderStatus.done);
+        break;
+      case _TabFilter.snoozed:
+        list = list.where((r) => r.status == ServiceReminderStatus.snoozed);
+        break;
+      case _TabFilter.cancelled:
+        list = list.where((r) => r.status == ServiceReminderStatus.cancelled);
+        break;
+      case _TabFilter.all:
+        break;
+    }
 
-    final mileageCtrl = TextEditingController(text: mileage);
-    final dueCtrl     = TextEditingController(text: _fmtDate(due));
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list.where((r) {
+        final inNotes = (r.notes ?? '').toLowerCase().contains(q);
+        final inPlate = r.vehiclePlate.toLowerCase().contains(q);
+        final inType = r.serviceTypeId.toLowerCase().contains(q);
+        return inNotes || inPlate || inType;
+      });
+    }
+    return list.toList();
+  }
 
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) => AlertDialog(
-            title: const Text('Edit Reminder'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      initialValue: subject,
-                      decoration: const InputDecoration(
-                        labelText: 'Subject Title',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                      onSaved: (v) => subject = v!.trim(),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: car,
-                      decoration: const InputDecoration(
-                        labelText: 'Car',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'Honda Civic', child: Text('Honda Civic')),
-                        DropdownMenuItem(value: 'Perodua Myvi', child: Text('Perodua Myvi')),
-                        DropdownMenuItem(value: 'Toyota Vios', child: Text('Toyota Vios')),
-                      ],
-                      onChanged: (v) => setLocal(() => car = v ?? car),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: dueCtrl,
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Due Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          initialDate: due,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                        );
-                        if (picked != null) {
-                          setLocal(() {
-                            due = picked;
-                            dueCtrl.text = _fmtDate(due);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: mileageCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Mileage',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                      onSaved: (v) => mileage = v!.trim(),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(null),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
-                    formKey.currentState!.save();
-
-                    // ✅ Return the edited values to the caller
-                    Navigator.of(ctx).pop({
-                      'subject': subject,
-                      'car': car,
-                      'mileage': mileageCtrl.text.trim(),
-                      'date': due,
-                    });
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        );
-      },
+  // ---------- Actions ----------
+  Future<void> _add() async {
+    final res = await _editDialog();
+    if (res == null) return;
+    final now = DateTime.now();
+    final newReminder = ServiceReminder(
+      id: _uuid.v4(),
+      userId: _userId,
+      vehiclePlate: res.vehiclePlate,
+      serviceTypeId: res.serviceTypeId,
+      nextDueDate: res.due,
+      status: ServiceReminderStatus.active,
+      notes: res.notes?.isEmpty == true ? null : res.notes,
+      lastCompletedAt: null,
+      createdAt: now,
+      updatedAt: now,
     );
-
-    mileageCtrl.dispose();
-    dueCtrl.dispose();
-    return result;
+    try {
+      final created = await _repo.create(newReminder, includeId: true);
+      setState(() => _items = [..._items, created]..sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate)));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder added')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: $e')));
+    }
   }
 
-  List<String> serviceTypes=["Engine Oil","Brake Check","Tire Rotation","Air Filter"];
-
-  Future<Map<String, dynamic>?> _addServiceReminder(BuildContext context) async {
-    final formKey = GlobalKey<FormState>();
-
-    // initial values
-    String subject = '';
-    String car = 'Honda Civic';
-    String type = 'Engine Oil';
-    String mileage = '';
-    DateTime due = DateTime.now();
-
-    // sample options
-    const serviceTypes = ['Engine Oil', 'Tyre Service', 'Air Filter', 'General'];
-    const cars = ['Honda Civic', 'Perodua Myvi', 'Toyota Vios'];
-
-    final mileageCtrl = TextEditingController(text: mileage);
-    final dueCtrl = TextEditingController(text: _fmtDate(due)); // assumes you have _fmtDate
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) => AlertDialog(
-            title: const Text('Add Service Reminder'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Subject
-                    TextFormField(
-                      decoration: const InputDecoration(
-                        labelText: 'Subject Title',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
-                      onSaved: (v) => subject = v!.trim(),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Car
-                    DropdownButtonFormField<String>(
-                      value: car,
-                      decoration: const InputDecoration(
-                        labelText: 'Car',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: cars
-                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                          .toList(),
-                      onChanged: (v) => setLocal(() => car = v ?? car),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Service type
-                    DropdownButtonFormField<String>(
-                      value: type,
-                      decoration: const InputDecoration(
-                        labelText: 'Service Type',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: serviceTypes
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (v) => setLocal(() => type = v ?? type),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Due date (tap to pick)
-                    TextFormField(
-                      controller: dueCtrl,
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Due Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: due,
-                        );
-                        if (picked != null) {
-                          setLocal(() {
-                            due = picked;
-                            dueCtrl.text = _fmtDate(due);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Mileage
-                    TextFormField(
-                      controller: mileageCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Mileage',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
-                      onSaved: (v) => mileage = v!.trim(),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(null),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
-                    formKey.currentState!.save();
-                    Navigator.of(ctx).pop({
-                      'subject': subject,
-                      'car': car,
-                      'type': type,
-                      'date': due,
-                      'mileage': mileageCtrl.text.trim(),
-                    });
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        );
-      },
+  Future<void> _edit(ServiceReminder r) async {
+    final res = await _editDialog(
+      initialNotes: r.notes ?? '',
+      initialPlate: r.vehiclePlate,
+      initialTypeId: r.serviceTypeId,
+      initialDue: r.nextDueDate,
     );
-
-    mileageCtrl.dispose();
-    dueCtrl.dispose();
-    return result;
+    if (res == null) return;
+    final updated = r.copyWith(
+      vehiclePlate: res.vehiclePlate,
+      serviceTypeId: res.serviceTypeId,
+      nextDueDate: res.due,
+      notes: res.notes?.isEmpty == true ? null : res.notes,
+      updatedAt: DateTime.now(),
+    );
+    try {
+      final saved = await _repo.update(updated);
+      final i = _items.indexWhere((x) => x.id == saved.id);
+      if (i != -1) setState(() => _items[i] = saved);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
+    }
   }
 
+  Future<void> _delete(ServiceReminder r) async {
+    final ok = await _confirmDelete();
+    if (ok != true) return;
+    try {
+      await _repo.delete(r.id);
+      setState(() => _items.removeWhere((x) => x.id == r.id));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder deleted')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+    }
+  }
 
+  Future<void> _markDone(ServiceReminder r) async {
+    try {
+      final saved = await _repo.markDone(r.id);
+      final i = _items.indexWhere((x) => x.id == saved.id);
+      if (i != -1) setState(() => _items[i] = saved);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked as done')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    }
+  }
+
+  Future<void> _snooze(ServiceReminder r, {int days = 14}) async {
+    try {
+      final saved = await _repo.snoozeTo(r.id, r.nextDueDate.add(Duration(days: days)));
+      final i = _items.indexWhere((x) => x.id == saved.id);
+      if (i != -1) setState(() => _items[i] = saved);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Snoozed $days days')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    }
+  }
+
+  Future<void> _cancel(ServiceReminder r) async {
+    try {
+      final saved = await _repo.cancel(r.id);
+      final i = _items.indexWhere((x) => x.id == saved.id);
+      if (i != -1) setState(() => _items[i] = saved);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cancelled')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    }
+  }
+
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 4, // All, Overdue, Upcoming, Completed
-      child: Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: const Text(
-            "Service Reminder",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F1217),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F1217),
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Service Reminder',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        floatingActionButton: Padding(
-          padding: const EdgeInsets.only(bottom: 50),
-          child: FloatingActionButton(
-            tooltip: "Add Service Reminder",
-            shape: const CircleBorder(
-              side: BorderSide(
-                color: Color(0xFF9333EA), // purple outline
-                width: 3,
-              ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: _brandPurple,
+        onPressed: _add,
+        child: const Icon(Icons.add),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _brandPurple))
+          : _error != null
+          ? Center(child: Text('Error: $_error'))
+          : RefreshIndicator(
+        onRefresh: _load,
+        color: _brandPurple,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _topBar()),
+            SliverList.builder(
+              itemCount: _visible.length,
+              itemBuilder: (_, i) => _reminderCard(_visible[i]),
             ),
-            onPressed: () async {
-              final res = await _addServiceReminder(context);
-              if (res != null) {
-                // handle result (e.g., setState to add new reminder)
-              }
-            },
-
-            child: const Icon(Icons.add),
-          ),
-        ),
-
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // Summary cards
-              Row(
-                children: [
-                  Expanded(
-                    child: _statusCard(
-                      title: "Overdue",
-                      count: _overdueCount,
-                      icon: Icons.warning_amber_outlined,
-                      bgColor: Colors.red.shade600,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _statusCard(
-                      title: "Upcoming",
-                      count: _upcomingCount,
-                      icon: Icons.upcoming,
-                      bgColor: Colors.amber.shade700,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _statusCard(
-                      title: "Completed",
-                      count: _completedCount,
-                      icon: Icons.check_circle,
-                      bgColor: Colors.green.shade600,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Tabs (not in AppBar)
-              ButtonsTabBar(
-                buttonMargin: const EdgeInsets.symmetric(horizontal: 5),
-                splashColor: Colors.deepPurple,
-                backgroundColor: const Color(0xFF9333EA),
-                unselectedBackgroundColor: const Color(0xFF1F2937),
-                unselectedLabelStyle: const TextStyle(color: Colors.white70),
-                labelStyle:
-                const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                contentPadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                labelSpacing: 20,
-                radius: 24,
-                tabs: const [
-                  Tab(text: "All"),
-                  Tab(text: "Overdue"),
-                  Tab(text: "Upcoming"),
-                  Tab(text: "Completed"),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Views
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _reminderList(_filter(null)), // All
-                    _reminderList(_filter(ReminderStatus.overdue)),
-                    _reminderList(_filter(ReminderStatus.upcoming)),
-                    _reminderList(_filter(ReminderStatus.completed)),
-                  ],
-                ),
-              ),
-
-            ],
-          ),
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
         ),
       ),
     );
   }
 
-  /// ---- Lists & cards ----
-
-  Widget _reminderList(List<ReminderItem> items) {
-    if (items.isEmpty) {
-      return const Center(child: Text("No reminders"));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 8),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final r = items[i];
-        return _serviceReminderCard(
-          subjectTitle: r.subjectTitle,
-          carName: r.carName,
-          mileage: r.mileage,
-          date: r.date,
-          isCompleted: r.isCompleted,
-          onMarkDone: r.isCompleted
-              ? null
-              : () {
-            setState(() {
-              r.isCompleted = true;
-            });
-          },
-          onEdit: r.isCompleted
-              ? null
-              : () async {
-            final res = await _editDialog(r); // pass current item
-
-            if (res == null) return;
-            setState(() {
-              r.subjectTitle = res['subject'] as String;
-              r.carName      = res['car'] as String;
-              r.mileage      = res['mileage'] as String;
-              r.date         = res['date'] as DateTime;
-              // r.isCompleted stays the same (or set from res if you include it)
-            });
-
-          },
-          onDelete: r.isCompleted
-              ? null
-              : () async {
-            final confirm = await _deleteReminder();
-            if (confirm) {
-              setState(() {
-                _reminders.remove(r); // safer than removeAt(i) if list is filtered
-              });
-              // Optional: feedback
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reminder deleted')),
-              );
-            }
-          },
-
-
-
-        );
-      },
+  // --- Top bar: search + segmented chips
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        children: [
+          // Search
+          Container(
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextField(
+              onChanged: (v) => setState(() => _query = v),
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Search plate, type, notes…',
+                hintStyle: TextStyle(color: Colors.white54),
+                icon: Icon(Icons.search, color: Colors.white60),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Segmented chips
+          Wrap(
+            spacing: 8,
+            children: [
+              _segChip('All', _TabFilter.all),
+              _segChip('Active', _TabFilter.active),
+              _segChip('Done', _TabFilter.done),
+              _segChip('Snoozed', _TabFilter.snoozed),
+              _segChip('Cancelled', _TabFilter.cancelled),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 
-  Future<bool> _deleteReminder() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false, // force user to choose
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete reminder?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+  Widget _segChip(String label, _TabFilter me) {
+    final selected = _tab == me;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => setState(() => _tab = me),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : Colors.white70,
+        fontWeight: FontWeight.w700,
+      ),
+      selectedColor: _brandPurple,
+      backgroundColor: _chipBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  // --- Card
+  Widget _reminderCard(ServiceReminder r) {
+    final statusColor = _statusColor(r.status);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white12),
+          boxShadow: const [
+            BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 6)),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // left accent
+            Container(
+              width: 5,
+              height: 110,
+              decoration: BoxDecoration(
+                color: statusColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // title + actions
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.car_repair, size: 18, color: Colors.white70),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            r.notes?.isNotEmpty == true
+                                ? r.notes!
+                                : 'System\nGenerated Time for your next service!',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                        _statusPill(_statusLabel(r.status), statusColor),
+                        const SizedBox(width: 6),
+                        _iconBtn(Icons.edit, onTap: () => _edit(r)),
+                        const SizedBox(width: 4),
+                        _iconBtn(Icons.delete, onTap: () => _delete(r)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // meta rows
+                    _metaRow('Plate', r.vehiclePlate),
+                    _metaRow('Service', r.serviceTypeId),
+                    _metaRow('Due', _fmtDate(r.nextDueDate)),
+                    if (r.lastCompletedAt != null)
+                      _metaRow('Last completed', _fmtDate(r.lastCompletedAt!)),
+
+                    const SizedBox(height: 12),
+
+                    // quick actions
+                    Row(
+                      children: [
+                        _textBtn('Mark Done', icon: Icons.check, color: Colors.green,
+                            onTap: r.status == ServiceReminderStatus.done ? null : () => _markDone(r)),
+                        const SizedBox(width: 12),
+                        _textBtn('Snooze 14d', icon: Icons.snooze, color: Colors.indigo,
+                            onTap: r.status == ServiceReminderStatus.active ? () => _snooze(r, days: 14) : null),
+                        const SizedBox(width: 12),
+                        _textBtn('Cancel', icon: Icons.cancel, color: Colors.grey,
+                            onTap: (r.status == ServiceReminderStatus.active ||
+                                r.status == ServiceReminderStatus.snoozed)
+                                ? () => _cancel(r)
+                                : null),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Text('$label: ',
+              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
     );
-    return ok ?? false; // handle back button / null
   }
 
-
-  Widget _serviceReminderCard({
-    required String subjectTitle,
-    required String carName,
-    required String mileage,
-    required DateTime date,
-    bool isCompleted = false,
-    VoidCallback? onMarkDone,
-    VoidCallback? onEdit,
-    VoidCallback? onDelete,
-  }) {
-    final text = Theme.of(context).textTheme;
-
-    final status = calcStatus(date, completed: isCompleted);
-    final meta = statusMeta(status);
-    final accentColor = meta.color;
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 12),
+  Widget _iconBtn(IconData icon, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border(left: BorderSide(color: accentColor, width: 3)),
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white12),
         ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.car_repair, color: accentColor, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        subjectTitle,
-                        style: text.titleMedium?.copyWith(
-                          color: accentColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        carName,
-                        style: text.bodyMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  children: [
-                    _statusChip(meta.label, background: accentColor.withOpacity(0.12)),
-                    const SizedBox(width: 12),
-                    if (onDelete != null)
-                      IconButton(
-                        onPressed: onDelete,
-                        icon: const Icon(Icons.delete, color: Colors.grey),
-                        tooltip: 'Delete',
-                      ),
-                  ],
-                )
+        child: Icon(icon, size: 18, color: Colors.white70),
+      ),
+    );
+  }
 
-
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // Meta
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(children: [
-                  const Icon(Icons.calendar_today, size: 16),
-                  const SizedBox(width: 6),
-                  Text("Due: ${_fmtDate(date)}", style: text.bodySmall),
-                ]),
-                Row(children: [
-                  const Icon(Icons.speed, size: 16),
-                  const SizedBox(width: 6),
-                  Text("Mileage: $mileage", style: text.bodySmall),
-                ]),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // Actions
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onMarkDone,
-                    icon: const Icon(Icons.check),
-                    label: Text(isCompleted ? "Completed" : "Mark as completed"),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                (onEdit != null)
-                    ? OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit),
-                  label: const Text("Edit"),
-                )
-                    : const SizedBox.shrink(),
-              ],
-            ),
-          ],
+  Widget _statusPill(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
         ),
       ),
     );
   }
 
-  /// ---- Small helpers ----
-
-  Widget _statusCard({
-    required String title,
-    required int count,
-    required IconData icon,
-    required Color bgColor,
-  }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      color: bgColor,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Column(
+  Widget _textBtn(String text,
+      {required IconData icon, required Color color, VoidCallback? onTap}) {
+    final disabled = onTap == null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        decoration: BoxDecoration(
+          color: disabled ? Colors.white10 : color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: (disabled ? Colors.white24 : color.withOpacity(0.5))),
+        ),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 28),
-            const SizedBox(height: 8),
+            Icon(icon, size: 16, color: disabled ? Colors.white54 : color),
+            const SizedBox(width: 6),
             Text(
-              "$count",
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              text,
+              style: TextStyle(
+                color: disabled ? Colors.white54 : Colors.white,
+                fontWeight: FontWeight.w700,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
             ),
           ],
         ),
@@ -749,21 +494,122 @@ class _ServicereminderState extends State<Servicereminder> {
     );
   }
 
-  Widget _statusChip(String label, {Color? background}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-      decoration: BoxDecoration(
-        color: background ?? Colors.grey.shade300,
-        borderRadius: BorderRadius.circular(6),
+  Future<bool> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C222B),
+        title: const Text('Delete reminder?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
       ),
-      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
     );
+    return ok ?? false;
   }
 
-  String _fmtDate(DateTime d) {
-    const months = [
-      'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'
-    ];
-    return "${d.day} ${months[d.month - 1]} ${d.year}";
+  // ---------- Dialog (Create/Edit) ----------
+  Future<_EditValues?> _editDialog({
+    String? initialNotes,
+    String? initialPlate,
+    String? initialTypeId,
+    DateTime? initialDue,
+  }) async {
+    final formKey = GlobalKey<FormState>();
+    final notesCtl = TextEditingController(text: initialNotes ?? '');
+    final plateCtl = TextEditingController(text: initialPlate ?? '');
+    final typeCtl = TextEditingController(text: initialTypeId ?? '');
+    DateTime due = initialDue ?? DateTime.now();
+    final dueCtl = TextEditingController(text: _fmtDate(due));
+
+    final res = await showDialog<_EditValues>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C222B),
+        title: const Text('Service Reminder'),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextFormField(
+                controller: notesCtl,
+                decoration: const InputDecoration(labelText: 'Notes / Subject'),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: plateCtl,
+                decoration: const InputDecoration(labelText: 'Vehicle Plate'),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: typeCtl,
+                decoration: const InputDecoration(labelText: 'Service Type ID'),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: dueCtl,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Next Due Date',
+                  suffixIcon: Icon(Icons.calendar_today),
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: due,
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    due = picked;
+                    dueCtl.text = _fmtDate(due);
+                  }
+                },
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _brandPurple),
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(
+                ctx,
+                _EditValues(
+                  notes: notesCtl.text.trim(),
+                  vehiclePlate: plateCtl.text.trim(),
+                  serviceTypeId: typeCtl.text.trim(),
+                  due: due,
+                ),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    return res;
   }
+}
+
+// DTO used by the editor dialog
+class _EditValues {
+  final String notes;
+  final String vehiclePlate;
+  final String serviceTypeId;
+  final DateTime due;
+  _EditValues({
+    required this.notes,
+    required this.vehiclePlate,
+    required this.serviceTypeId,
+    required this.due,
+  });
 }
