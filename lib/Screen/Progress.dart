@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../Components/Timeline_tile.dart';      // your MyStepTile
@@ -15,6 +16,9 @@ class Progress extends StatefulWidget {
 
 class _ProgressState extends State<Progress> {
   final _casesRepo = CasesRepo();
+
+  bool isCaseCompleted = false;
+  bool isPaymentNow = false;
 
   bool _loading = true;
   CaseModel? _case;
@@ -48,7 +52,9 @@ class _ProgressState extends State<Progress> {
 
   Future<void> _load() async {
     try {
-      final c = await _casesRepo.getCaseByBookingId(widget.bookingId);
+      final c = await _casesRepo.getOnGoingCaseByBookingId(widget.bookingId);
+      isCaseCompleted = c != null && c.caseStatus == CaseStatus.done &&c.caseClosed;
+      isPaymentNow = c != null && c.caseStatus == CaseStatus.payment;
       if (!mounted) return;
       setState(() => _case = c);
     } catch (e) {
@@ -78,6 +84,24 @@ class _ProgressState extends State<Progress> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not launch Maps')),
+      );
+    }
+  }
+
+  Future<void>_updateCaseStatus(CaseStatus status) async {
+    if (_case == null) return;
+    try {
+      await _casesRepo.updateCaseStatus(_case!.caseId, status);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Case status updated successfully')),
+      );
+      // Reload the case to reflect changes
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update case status: $e')),
       );
     }
   }
@@ -227,6 +251,28 @@ class _ProgressState extends State<Progress> {
             // ===== Timeline =====
             const SizedBox(height: 10),
             Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Case ID : ${_case!.caseId}",
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    overflow: TextOverflow.ellipsis, // 👈 truncates long text
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _case!.caseId));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Case ID copied to clipboard")),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
@@ -240,7 +286,7 @@ class _ProgressState extends State<Progress> {
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: const Color(0xFF10B981), width: 1.5),
                   ),
-                  child: TextButton(
+                  child: isCaseCompleted? TextButton(
                     onPressed: () {
                       Navigator.pushNamed(context, '/serviceFeedback');
                       // or: Navigator.push(context, MaterialPageRoute(builder: (_) => const ServiceFeedback()));
@@ -253,8 +299,32 @@ class _ProgressState extends State<Progress> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                )
+                  ):
+                  isPaymentNow? TextButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/payment', arguments: {
+                        'caseId': _case!.caseId,
+                        'bookingId': widget.bookingId,
+                      });
+                    },
+                    child: const Text(
+                      "Make Payment",
+                      style: TextStyle(
+                        color: Color(0xFF10B981),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ):
+                  const Text(
+                    "In Progress",
+                    style: TextStyle(
+                      color: Color(0xFF10B981),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                ),
+                ),
               ],
             ),
 
@@ -277,11 +347,40 @@ class _ProgressState extends State<Progress> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Repair Details",
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text("Repair Details",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700)
+                      ),
+                      TextButton.icon(
+                          onPressed: (){
+                            final currentStatus = _case!.caseStatus;
+                            final currentIndex = _ordered.indexOf(currentStatus);
+                            if (currentIndex < _ordered.length - 1) {
+                              final nextStatus = _ordered[currentIndex + 1];
+                              _updateCaseStatus(nextStatus);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('This case is already at the final status.')),
+                              );
+                            }
+                          }
+                          ,
+                          label: Text("Next Progress",style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),),
+                          icon: const Icon(Icons.arrow_circle_right, size: 18, color: Color(0xFF10B981),
+                      ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
 
                   _DetailRow(

@@ -139,15 +139,9 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
-      HomeTab(
-        onTabSelected: _onTabSelected,
-        isLoading: _busy,
-        completedPercentage: completedPercentage,
-        rating: rating,
-        ratingChange: ratingChange,
-        appointments: appointments,
-        completedAppointments: completedAppointments,
-      ),
+      // ✅ HomeTab no longer receives data; it fetches by itself
+      HomeTab(onTabSelected: _onTabSelected),
+
       const ProgressTab(),
       AppointmentsTab(initialIndex: _appointmentsTabIndex),
       const ProfileTab(),
@@ -166,9 +160,7 @@ class _HomeState extends State<Home> {
           PageView(
             controller: _pageController,
             onPageChanged: (index) {
-              setState(() {
-                _current = index;
-              });
+              setState(() => _current = index);
             },
             children: pages,
           ),

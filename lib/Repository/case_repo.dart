@@ -68,7 +68,7 @@ class CasesRepo {
   }
 
 // Fetch the case by booking_id (deep join like other methods)
-  Future<CaseModel?> getCaseByBookingId(String bookingId) async {
+  Future<CaseModel?> getOnGoingCaseByBookingId(String bookingId) async {
     final res = await supabase
         .from('cases')
         .select('''
@@ -84,11 +84,14 @@ class CasesRepo {
         )
       ''')
         .eq('booking_id', bookingId)
+        .neq('case_status', 'DONE')
+        .eq('case_closed', false)
         .maybeSingle();
 
     if (res == null) return null;
     return CaseModel.fromMap(res as Map<String, dynamic>);
   }
+
 
   Future<List<CaseModel>> getActiveCasesForUser(String userId) async {
     final res = await supabase

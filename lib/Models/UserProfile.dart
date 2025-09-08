@@ -10,9 +10,10 @@ class UserProfile {
   final DateTime? updatedAt;
 
   // NEW FIELDS
-  final String? profilePicUrl;  // store profile picture URL (Supabase storage / S3 / etc.)
+  final String? profilePicUrl;  // Supabase storage / S3 URL
   final int points;             // loyalty or reward points
   final String memberLevel;     // e.g. 'Junior' | 'Senior' | 'Pro' | 'Master'
+  final DateTime? dob;          // OPTIONAL date of birth
 
   const UserProfile({
     required this.uid,
@@ -26,6 +27,7 @@ class UserProfile {
     this.profilePicUrl,
     this.points = 0,
     this.memberLevel = 'Junior',
+    this.dob, // optional
   });
 
   // ---------- Mapping to Supabase ----------
@@ -41,6 +43,9 @@ class UserProfile {
     'profile_pic_url': profilePicUrl,
     'points': points,
     'member_level': memberLevel,
+    'dob': dob?.toIso8601String(),           // <-- write DOB if present
+    // If your column is `date_of_birth`, change to:
+    // 'date_of_birth': dob?.toIso8601String(),
   };
 
   Map<String, dynamic> toUpdateMap() => {
@@ -54,9 +59,13 @@ class UserProfile {
     'profile_pic_url': profilePicUrl,
     'points': points,
     'member_level': memberLevel,
+    'dob': dob?.toIso8601String(),           // <-- write DOB if present
+    // or 'date_of_birth': dob?.toIso8601String(),
   };
 
   factory UserProfile.fromMap(Map<String, dynamic> d) {
+    // read either `dob` or `date_of_birth`
+    final rawDob = d['dob'] ?? d['date_of_birth'];
     return UserProfile(
       uid: (d['id'] ?? '').toString(),
       name: d['name'] as String? ?? '',
@@ -71,6 +80,7 @@ class UserProfile {
       profilePicUrl: d['profile_pic_url'] as String?,
       points: d['points'] as int? ?? 0,
       memberLevel: d['member_level'] as String? ?? 'Junior',
+      dob: rawDob == null ? null : DateTime.tryParse(rawDob.toString()),
     );
   }
 
@@ -85,6 +95,7 @@ class UserProfile {
     String? profilePicUrl,
     int? points,
     String? memberLevel,
+    DateTime? dob, // <-- allow overriding dob
   }) {
     return UserProfile(
       uid: uid,
@@ -98,6 +109,7 @@ class UserProfile {
       profilePicUrl: profilePicUrl ?? this.profilePicUrl,
       points: points ?? this.points,
       memberLevel: memberLevel ?? this.memberLevel,
+      dob: dob ?? this.dob,
     );
   }
 }

@@ -1,9 +1,11 @@
 import 'dart:typed_data' as t;
+import 'package:path/path.dart' as p;
 
 import 'package:flutter/material.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:workshop_assignment/Repository/user_repo.dart';
 import 'package:workshop_assignment/Screen/CaseHistory.dart';
@@ -251,16 +253,62 @@ class _ProfileTabState extends State<ProfileTab> {
         ),
       ),
     );
-
     if (action == null) return;
 
     if (action == PhotoAction.remove) {
-      setState(() => _avatarBytes = null);
+      final userId = _auth.currentUser?.id;
+      if (userId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No user logged in.')),
+        );
+        return;
+      }
+
+      try {
+        setState(() => _avatarBytes = null);
+
+        // try both .png and .jpg in case user uploaded different ext
+        final candidates = '$userId.png';
+        bool deleted = false;
+
+          try {
+            await _auth.deleteFile(folder: 'profile', fileName: candidates);
+            deleted = true;
+          } catch (_) {
+            // ignore errors until all tried
+          }
+
+        if (!deleted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No profile picture found to remove.')),
+          );
+          return;
+        }
+
+        await UserRepository().removeProfilePicUrl(userId: userId);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture removed')),
+        );
+
+        setState(() {
+          _loading = true;
+          _loadUser();
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error removing profile picture: $e')),
+        );
+      }
       return;
     }
 
-    final source =
-    (action == PhotoAction.camera) ? ImageSource.camera : ImageSource.gallery;
+
+    final source = (action == PhotoAction.camera)
+        ? ImageSource.camera
+        : ImageSource.gallery;
 
     final XFile? picked = await _picker.pickImage(
       source: source,
@@ -270,9 +318,49 @@ class _ProfileTabState extends State<ProfileTab> {
 
     if (picked == null) return;
 
+    // Read bytes and update preview immediately
     final bytes = await picked.readAsBytes();
-    setState(() => _avatarBytes = t.Uint8List.fromList(bytes));
-    // NOTE: uploading/saving to storage & updating DB can be added here.
+    setState(() => _avatarBytes = bytes);
+
+    // Then upload
+    try {
+      // ✅ Check extension first
+      final ext = p.extension(picked.name).toLowerCase(); // e.g. ".jpg", ".png"
+
+      if (!(ext == '.jpg' || ext == '.jpeg' || ext == '.png')) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Only JPG or PNG photos are allowed.')),
+        );
+        return;
+      }
+
+      final userId = _auth.currentUser?.id ?? 'unknown';
+
+      // ✅ Always force PNG filename (overwrite)
+      final url = await _auth.uploadFile(
+        folder: 'profile',
+        fileData: bytes,
+        fileName: '$userId.png', // always PNG in storage
+        forcePng: true,
+        upsert: true, // overwrite old profile pic
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture updated')),
+      );
+    //save `url` to the user profile in DB
+      UserRepository userRepository=UserRepository();
+      await userRepository.updateProfilePicUrl(userId:_auth.currentUser!.id, url: url);
+      if (!mounted) return;
+
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload: $e')),
+      );
+    }
   }
 
   ImageProvider _resolveAvatar() {
@@ -453,13 +541,19 @@ class _ProfileTabState extends State<ProfileTab> {
                       label: tab.label,
                       onTap: tab.onTap ??
                               () {
-                            if (tab.builder != null) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: tab.builder!),
-                              );
-                            }
-                          },
+                                if (tab.builder != null) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: tab.builder!),
+                                  ).then((_) {
+                                    // 🔥 this runs when you come back
+                                    print("Come back from ${tab.label}, reloading user");
+                                    _loading=true;
+                                    _loadUser();
+                                  });
+                                }
+
+                              },
                     ),
                   );
                 },

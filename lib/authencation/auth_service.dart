@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:workshop_assignment/Repository/user_repo.dart';
 
@@ -19,6 +22,69 @@ class AuthService {
   }
 
 
+  Future<String> uploadFile({
+    required String folder,        // "user", "car", or "invoice"
+    required Uint8List fileData,
+    required String fileName,      // e.g. "profile.png" or "invoice.pdf"
+    bool forcePng = false,         // 👈 new param
+    bool upsert = true,
+  }) async {
+    final bucket = 'Help4uBucket';
+
+    // Force PNG only if requested
+    String finalName = fileName;
+    String contentType = lookupMimeType(fileName) ?? 'application/octet-stream';
+
+    if (forcePng) {
+      finalName = '${fileName.split('.').first}.png';
+      contentType = 'image/png';
+    }
+
+    final path = '$folder/$finalName';
+
+    try {
+      await _supabase.storage
+          .from(bucket)
+          .uploadBinary(
+        path,
+        fileData,
+        fileOptions: FileOptions(
+          contentType: contentType,
+          upsert: upsert,
+        ),
+      );
+
+      return _supabase.storage.from(bucket).getPublicUrl(path);
+    } on StorageException catch (e) {
+      throw Exception('File upload failed: ${e.message}');
+    } catch (e) {
+      throw Exception('Unexpected error: $e');
+    }
+  }
+
+  Future<void> deleteFile({
+    required String folder,
+    required String fileName,
+  }) async {
+    final bucket = 'Help4uBucket';
+    final path= '$folder/$fileName';
+    try {
+      final deleted = await _supabase.storage.from(bucket).remove([path]);
+
+      if (deleted.isEmpty) {
+        // Nothing was deleted
+        throw Exception('File deletion failed: file not found or already removed.');
+      }
+    } on StorageException catch (e) {
+      throw Exception('Storage error: ${e.message}');
+    } catch (e) {
+      throw Exception('Unexpected error: $e');
+    }
+  }
+
+
+
+
   Future<void> sendPasswordResetEmail({required String email}) async {
     await Supabase.instance.client.auth.resetPasswordForEmail(
       email,
@@ -32,6 +98,9 @@ class AuthService {
     );
   }
 
+  Future<void>logOut() async {
+    await _supabase.auth.signOut();
+  }
   /// Sign in using phone + password (maps phone → email via UserRepository)
   Future<AuthResponse> login({
     required String phone,
@@ -60,6 +129,7 @@ class AuthService {
       password: pw,
     );
   }
+
   /// User deletes their own account (reauthenticate first)
   Future<bool> deleteUser({
     required String email,

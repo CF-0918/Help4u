@@ -107,4 +107,41 @@ Future<String?> getEmailByPhone(String phoneNo) async {
       return null;
     }
   }
+
+  Future<void>updateProfilePicUrl({required String userId, required String url}) async {
+    try {
+      await _client
+          .from('user_profiles')
+          .update({'profile_pic_url': url})
+          .eq('id', userId);
+    } catch (e) {
+      print("updateProfilePicUrl error: $e");
+    }
+  }
+
+  Future<void>removeProfilePicUrl({required String userId}) async {
+    try {
+      await _client
+          .from('user_profiles')
+          .update({'profile_pic_url': null})
+          .eq('id', userId);
+    } catch (e) {
+      print("removeProfilePicUrl error: $e");
+    }
+  }
+
+  Future<UserProfile?> updateUserProfile({required UserProfile user}) async {
+    // make sure we attach id = auth.uid()
+    final data = user.toInsertMap()..['id'] = user.uid;
+
+    final response = await _client
+        .from('user_profiles')
+        .upsert(data, onConflict: 'id') // safer than insert
+        .select()
+        .single();
+
+    return UserProfile.fromMap(response);
+  }
+
+
 }

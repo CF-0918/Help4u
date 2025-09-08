@@ -77,6 +77,10 @@ class _ProgressTabState extends State<ProgressTab> {
     }
   }
 
+  bool isPaymentStage(CaseStatus s) {
+    return s == CaseStatus.payment || s == CaseStatus.done;
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = _active.length + _completed.length;
@@ -182,8 +186,10 @@ class _ProgressTabState extends State<ProgressTab> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        vehicle?.model ?? '-',
-                                        style: const TextStyle(
+                                  "${vehicle?.brand ?? '-'} ${vehicle?.model ?? '-'}",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
                                             fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black),
                                       ),
                                       const SizedBox(height: 4),
@@ -281,12 +287,19 @@ class _ProgressTabState extends State<ProgressTab> {
                                       onPressed: () {
                                         final bid = c.bookingId;
                                         if (bid == null) return;
+
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) => Progress(bookingId: bid),
                                           ),
-                                        );
+                                        ).then((_) {
+                                          setState(() {
+                                            _animate = false;
+                                            _fetch();        // refresh your data
+                                            _loading = true;
+                                          });
+                                        });
                                       },
                                       child: const Text(
                                         "View Details",
@@ -314,6 +327,36 @@ class _ProgressTabState extends State<ProgressTab> {
                                 ),
                               ],
                             ),
+                            isPaymentStage(c.caseStatus)
+                                ? Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Please prepare for payment at the counter. or ',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5,),
+                              TextButton.icon(
+                                onPressed: () {},
+                                icon: const Icon(Icons.payment),
+                                label: const Text('Pay Now'),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white, // applies to text + icon
+                                  textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+
+                              ],
+                              ),
+                            )
+                                : const SizedBox.shrink(),
                           ],
                         ),
                       ),

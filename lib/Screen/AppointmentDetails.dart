@@ -95,6 +95,90 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
     }
   }
 
+  Future<void> _cancelAppointment(String bookingId) async {
+    // 1) Confirm
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          title: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('Cancel Appointment'),
+            ],
+          ),
+          content: const Text(
+            'Are you sure you want to cancel this appointment? '
+                'This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444), // red
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Yes, cancel',style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+// 2) Show loading dialog (don’t await here)
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _LoadingDialog(message: 'Cancelling…'),
+    );
+
+// 3) Do the work
+    try {
+      await _apptRepo.updateStatus(bookingId, 'Cancelled');
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // ✅ close loading dialog
+
+      setState(() {
+        ableCancel = false;
+      });
+      await _load();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Appointment cancelled successfully'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // ✅ close loading dialog
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to cancel appointment: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+  }
+
+
   Future<void> _checkIn() async {
     if (_appt == null || _alreadyCheckedIn || _submitting) return;
 
@@ -129,7 +213,7 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
 
       // If you want to push to Progress page after check-in:
       Navigator.push(context, MaterialPageRoute(
-        builder: (_) => Progress(bookingId: uuidCase),
+        builder: (_) => Progress(bookingId: _appt!.id),
       ));
     } catch (e) {
       if (!mounted) return;
@@ -140,6 +224,7 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
       if (mounted) setState(() => _submitting = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -382,7 +467,7 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      // TODO: Launch dialer if you store phone in Outlet
+                     _cancelAppointment(_appt!.id);
                     },
                     style: OutlinedButton.styleFrom(
                       backgroundColor: Colors.red,
@@ -442,6 +527,35 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+// A tiny reusable loading dialog
+class _LoadingDialog extends StatelessWidget {
+  final String message;
+  const _LoadingDialog({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black.withOpacity(0.75),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 100),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.6),
+            ),
+            const SizedBox(width: 12),
+            Text(message, style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),

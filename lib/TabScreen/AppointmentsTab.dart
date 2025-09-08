@@ -6,10 +6,8 @@ import 'package:workshop_assignment/Screen/AppointmentDetails.dart';
 
 import '../Models/Appointment.dart';
 import '../Screen/MakeAppointment.dart';
-import '../Screen/Progress.dart';
-import '../Screen/ServiceFeedback.dart';
 
-class AppointmentsTab extends StatefulWidget  {
+class AppointmentsTab extends StatefulWidget {
   final int initialIndex;
 
   const AppointmentsTab({super.key, this.initialIndex = 0});
@@ -18,13 +16,13 @@ class AppointmentsTab extends StatefulWidget  {
   State<AppointmentsTab> createState() => _AppointmentsTabState();
 }
 
-class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderStateMixin {
-  // Use three separate lists for each tab's data
+class _AppointmentsTabState extends State<AppointmentsTab>
+    with TickerProviderStateMixin {
   List<Appointment> upcoming = [];
   List<Appointment> completed = [];
   List<Appointment> cancelled = [];
 
-  bool isLoading = true; // State to manage loading
+  bool isLoading = true;
 
   late TabController _tabController;
 
@@ -34,7 +32,7 @@ class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderSt
     _tabController = TabController(
       length: 3,
       vsync: this,
-      initialIndex: widget.initialIndex, // Use the initialIndex here
+      initialIndex: widget.initialIndex,
     );
     _fetchAppointments();
   }
@@ -45,15 +43,20 @@ class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderSt
     super.dispose();
   }
 
-  // A dedicated method to fetch and categorize appointments
   Future<void> _fetchAppointments() async {
     try {
-      final List<Appointment> allAppointments = await AppointmentRepository().fetchUserAppointments();
+      final List<Appointment> allAppointments =
+      await AppointmentRepository().fetchUserAppointments();
       setState(() {
-        // Filter appointments into their respective lists
-        upcoming = allAppointments.where((appt) => appt.bookingStatus == 'Confirmed').toList();
-        completed = allAppointments.where((appt) => appt.bookingStatus == 'Completed').toList();
-        cancelled = allAppointments.where((appt) => appt.bookingStatus == 'Cancelled').toList();
+        upcoming = allAppointments
+            .where((appt) => appt.bookingStatus == 'Confirmed')
+            .toList();
+        completed = allAppointments
+            .where((appt) => appt.bookingStatus == 'Completed')
+            .toList();
+        cancelled = allAppointments
+            .where((appt) => appt.bookingStatus == 'Cancelled')
+            .toList();
         isLoading = false;
       });
     } catch (e) {
@@ -82,10 +85,12 @@ class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderSt
           backgroundColor: const Color(0xFF9333EA),
           unselectedBackgroundColor: const Color(0xFF1F2937),
           splashColor: Colors.purpleAccent,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           labelSpacing: 8,
           radius: 24,
-          labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          labelStyle: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w700),
           unselectedLabelStyle: const TextStyle(color: Colors.white70),
           tabs: const [
             Tab(icon: Icon(Icons.event_available), text: "Upcoming"),
@@ -99,18 +104,28 @@ class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderSt
           : TabBarView(
         controller: _tabController,
         children: [
-          // Pass the correct list to each TabBarView child
-          _AppointmentsList(stateLabel: "Upcoming", items: upcoming),
-          _AppointmentsList(stateLabel: "Completed", items: completed),
-          _AppointmentsList(stateLabel: "Cancelled", items: cancelled),
+          _AppointmentsList(
+              stateLabel: "Upcoming",
+              items: upcoming,
+              onRefresh: _fetchAppointments),
+          _AppointmentsList(
+              stateLabel: "Completed",
+              items: completed,
+              onRefresh: _fetchAppointments),
+          _AppointmentsList(
+              stateLabel: "Cancelled",
+              items: cancelled,
+              onRefresh: _fetchAppointments),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         shape: const CircleBorder(),
         onPressed: () {
-          // Push the new screen and wait for it to pop
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const MakeAppointment())).then((_) {
-            // Once the screen is popped, refresh the appointments data
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => const MakeAppointment()))
+              .then((_) {
             _fetchAppointments();
           });
         },
@@ -124,30 +139,47 @@ class _AppointmentsTabState extends State<AppointmentsTab> with TickerProviderSt
 class _AppointmentsList extends StatelessWidget {
   final String stateLabel;
   final List<Appointment> items;
-  const _AppointmentsList({required this.stateLabel, required this.items});
+  final Future<void> Function() onRefresh;
+
+  const _AppointmentsList(
+      {required this.stateLabel,
+        required this.items,
+        required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(
-        child: Text(
-          "No appointments",
-          style: TextStyle(color: Colors.white70),
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView(
+          children: const [
+            SizedBox(height: 200),
+            Center(
+              child: Text(
+                "No appointments",
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, i) {
-        final appt = items[i];
-        return _AppointmentCard(
-          appointment: appt,
-          stateLabel: stateLabel,
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, i) {
+          final appt = items[i];
+          return _AppointmentCard(
+            appointment: appt,
+            stateLabel: stateLabel,
+            onRefresh: onRefresh,
+          );
+        },
+      ),
     );
   }
 }
@@ -155,7 +187,12 @@ class _AppointmentsList extends StatelessWidget {
 class _AppointmentCard extends StatelessWidget {
   final Appointment appointment;
   final String stateLabel;
-  const _AppointmentCard({required this.appointment, required this.stateLabel});
+  final Future<void> Function() onRefresh;
+
+  const _AppointmentCard(
+      {required this.appointment,
+        required this.stateLabel,
+        required this.onRefresh});
 
   Color _statusColor(String label) {
     switch (label.toLowerCase()) {
@@ -174,7 +211,8 @@ class _AppointmentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final bookingDay = DateTime(appointment.bookingDate.year, appointment.bookingDate.month, appointment.bookingDate.day);
+    final bookingDay = DateTime(appointment.bookingDate.year,
+        appointment.bookingDate.month, appointment.bookingDate.day);
     final difference = bookingDay.difference(today).inDays;
 
     String timeLabel;
@@ -187,18 +225,18 @@ class _AppointmentCard extends StatelessWidget {
     }
 
     final dotColor = _statusColor(stateLabel);
-    final isCompleted = stateLabel == 'Completed';
 
     return GestureDetector(
       onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AppointmentDetails(
-                appointmentID: appointment.id,
-              ),
-            ),
-          );
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                AppointmentDetails(appointmentID: appointment.id),
+          ),
+        ).then((_) {
+          onRefresh(); // 👈 refresh after back
+        });
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -216,7 +254,6 @@ class _AppointmentCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -235,12 +272,13 @@ class _AppointmentCard extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: dotColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child:Text(
+                  child: Text(
                     timeLabel,
                     style: const TextStyle(
                       color: Colors.white70,
@@ -249,15 +287,13 @@ class _AppointmentCard extends StatelessWidget {
                     ),
                   ),
                 ),
-
               ],
             ),
             const SizedBox(height: 12),
-
-            // Car and Service Info
             _buildInfoRow(
               icon: Icons.directions_car_filled,
-              label: '${appointment.vehicle.brand} ${appointment.vehicle.model}',
+              label:
+              '${appointment.vehicle.brand} ${appointment.vehicle.model}',
               value: appointment.vehicle.plateNo,
             ),
             _buildInfoRow(
@@ -271,11 +307,10 @@ class _AppointmentCard extends StatelessWidget {
               value: '${appointment.mileage} KM',
             ),
             const SizedBox(height: 12),
-
-            // Date and Time Info
             Row(
               children: [
-                const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
+                const Icon(Icons.calendar_today,
+                    size: 16, color: Colors.white70),
                 const SizedBox(width: 8),
                 Text(
                   DateFormat.yMMMd().format(appointment.bookingDate),
@@ -285,7 +320,8 @@ class _AppointmentCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                const Icon(Icons.access_time, size: 16, color: Colors.white70),
+                const Icon(Icons.access_time,
+                    size: 16, color: Colors.white70),
                 const SizedBox(width: 8),
                 Text(
                   appointment.bookingTime,
@@ -302,7 +338,10 @@ class _AppointmentCard extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow({required IconData icon, required String label, required String value}) {
+  Widget _buildInfoRow(
+      {required IconData icon,
+        required String label,
+        required String value}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -332,7 +371,6 @@ class _AppointmentCard extends StatelessWidget {
   }
 }
 
-// tiny colored dot
 class _StatusDot extends StatelessWidget {
   final Color color;
   const _StatusDot({required this.color});

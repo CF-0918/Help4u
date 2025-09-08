@@ -60,6 +60,7 @@ dependencies:
   supabase_flutter: 2.10.0
   flutter_secure_storage: ^9.0.0
   flutter_email_sender: ^7.0.0
+  mime: ^2.0.0
 
 
 dev_dependencies:
