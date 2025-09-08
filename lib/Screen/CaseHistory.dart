@@ -4,9 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../Components/Timeline_tile.dart';      // your MyStepTile
 import '../Models/Case.dart';                    // CaseModel + CaseStatus
-import '../Repository/case_repo.dart';           // CasesRepo
+import '../Repository/case_repo.dart';
+import '../Screen/ServiceFeedback.dart';               // CasesRepo
 
 class CaseHistory extends StatefulWidget {
+
   const CaseHistory({super.key});
 
   @override
@@ -213,19 +215,74 @@ class _CaseHistoryState extends State<CaseHistory> {
               const SizedBox(height: 12),
 
               // Workshop label only
-              Row(
-                children: [
-                  const _MetaLabel(
-                    icon: Icons.store_mall_directory_outlined,
-                    text: "Workshop",
-                  ),
-                  const SizedBox(width: 8),
-                  _MetaValue(text: c.appointment?.outlet.outletName ?? '-'),
-                ],
-              ),
-            ],
-          ),
+// Workshop label only
+        Row(
+          children: [
+            const _MetaLabel(
+              icon: Icons.store_mall_directory_outlined,
+              text: "Workshop",
+            ),
+            const SizedBox(width: 8),
+            _MetaValue(text: c.appointment?.outlet.outletName ?? '-'),
+          ],
+        ),
 
+        const SizedBox(height: 12),
+
+// ===== Feedback Button =====
+// ===== Feedback Button =====
+        Align(
+          alignment: Alignment.centerRight,
+          child: FutureBuilder(
+            future: Supabase.instance.client
+                .from('service_feedback')
+                .select()
+                .eq('caseid', c.caseId)
+                .eq('booking_id', c.appointment?.id ?? '')
+                .eq('userid', Supabase.instance.client.auth.currentUser!.id)
+                .maybeSingle(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox.shrink(); // or CircularProgressIndicator if you want
+              }
+
+              final hasReview = snapshot.hasData && snapshot.data != null;
+
+              return ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ServiceFeedback(
+                        caseId: c.caseId,
+                        bookingId: c.appointment?.id ?? '',
+                      ),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                icon: const Icon(Icons.feedback, color: Colors.white, size: 18),
+                label: Text(
+                  hasReview ? "Edit Feedback" : "Leave Feedback",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              );
+            },
+          ),
+        )
+
+           ],
+          ),
           // ==== EXPANDED CONTENT ====
           children: [
             Padding(
