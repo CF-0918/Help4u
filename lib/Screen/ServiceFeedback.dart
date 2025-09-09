@@ -2,6 +2,8 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:workshop_assignment/authencation/auth_service.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ServiceFeedback extends StatefulWidget {
   final String caseId;
@@ -19,12 +21,16 @@ class ServiceFeedback extends StatefulWidget {
 
 class _ServiceFeedbackState extends State<ServiceFeedback> {
   final Color surface = const Color(0xFF1F2937);
+  final ImagePicker _picker = ImagePicker();
+  final _auth = AuthService();
 
   double ratingRate = 0;
   final TextEditingController _commentController = TextEditingController();
   bool _loading = false;
   bool _hasReview = false;
   String? _feedbackId;
+  String? _uploadedImage;
+
 
   String getEmoji(double rating) {
     if (rating <= 1) return "😡";
@@ -80,6 +86,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
         await supabase.from('service_feedback').update({
           'rating': ratingRate,
           'comments': _commentController.text.trim(),
+          'images': _uploadedImage != null ? [_uploadedImage] : [],
         }).eq('feedback_id', _feedbackId.toString());
       } else {
         // insert
@@ -89,7 +96,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
           'userid': userId,
           'rating': ratingRate,
           'comments': _commentController.text.trim(),
-          'images': [],
+          'images': _uploadedImage != null ? [_uploadedImage] : [],
         }).select().single();
 
         _feedbackId = inserted['feedback_id'];
@@ -188,9 +195,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                 ],
               ),
             ),
-
             const SizedBox(height: 10),
-
             // 🔹 Rating Box
             Container(
               width: double.infinity,
@@ -229,9 +234,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                 ],
               ),
             ),
-
             const SizedBox(height: 10),
-
             // 🔹 Comments Box
             Container(
               padding: const EdgeInsets.all(10),
@@ -250,7 +253,6 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                     ),
                   ),
                   const SizedBox(height: 15),
-
                   // 🔹 Feedback Input Box
                   DottedBorder(
                     options: RectDottedBorderOptions(
@@ -273,13 +275,10 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                       ),
                     ),
                   )
-
                 ],
               ),
             ),
-
             const SizedBox(height: 15),
-
 // 🔹 Image Upload Box
             Container(
               padding: const EdgeInsets.all(10),
@@ -290,7 +289,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
               child: Column(
                 children: [
                   const Text(
-                    "Add Photos (Optional)",
+                    "Add Photo (Optional)",
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -298,11 +297,28 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                     ),
                   ),
                   const SizedBox(height: 15),
-
                   GestureDetector(
-                    onTap: () {
-                      // TODO: implement image picker
+                    onTap: () async {
+                      final picked = await _picker.pickImage(source: ImageSource.gallery);
+
+                      if (picked != null) {
+                        final supabase = Supabase.instance.client;
+                        final fileBytes = await picked.readAsBytes();
+                        final userId = supabase.auth.currentUser?.id;
+
+                        final url = await _auth.uploadFile(
+                          folder: 'feedback',
+                          fileData: fileBytes,
+                          fileName: '${widget.caseId}_${userId}.png',
+                          forcePng: true,
+                          upsert: true,
+                        );
+                        setState(() {
+                          _uploadedImage = url;
+                        });
+                      }
                     },
+
                     child: DottedBorder(
                       options: RectDottedBorderOptions(
                         color: Colors.white,
@@ -310,20 +326,28 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                         dashPattern: const [6, 3],
                       ),
                       child: SizedBox(
-                        height: 120,
+                        height: 150,
                         width: double.infinity,
                         child: Center(
-                          child: Column(
+                          child: _uploadedImage == null
+                              ? Column(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
                               Icon(Icons.add_photo_alternate,
                                   color: Colors.white70, size: 28),
                               SizedBox(height: 6),
-                              Text(
-                                "Tap to add images",
-                                style: TextStyle(color: Colors.white70),
-                              ),
+                              Text("Tap to add image",
+                                  style: TextStyle(color: Colors.white70)),
                             ],
+                          )
+                              : ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              _uploadedImage!,
+                              height: 120,
+                              width: 120,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                       ),
@@ -332,11 +356,7 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                 ],
               ),
             ),
-
-
             const SizedBox(height: 25),
-
-            // 🔹 Submit Button
 // 🔹 Submit / Edit Button
             SizedBox(
               width: 300,
@@ -372,7 +392,6 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                 ),
               ),
             ),
-
           ],
         ),
       ),
