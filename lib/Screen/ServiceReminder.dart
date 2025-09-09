@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:workshop_assignment/Repository/serviceType_repo.dart';
+import 'package:workshop_assignment/Repository/vehicle_repo.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 
+import '../Models/ServiceType.dart';
+import '../Models/Vehicle.dart';
 import '../Repository/serviceReminder_repo.dart';
-import '../models/serviceReminder.dart';
+import '../Models/ServiceReminder.dart';
 
 /// Brand colors (kept your vibe)
 const _brandPurple = Color(0xFF9333EA);
@@ -30,8 +34,8 @@ String _fmtDate(DateTime d) =>
 enum _TabFilter { all, active, done, snoozed, cancelled }
 
 class ServiceReminderPage extends StatefulWidget {
-   ServiceReminderPage({super.key});
-  final String currentUserId=AuthService().currentUser!.id;
+  ServiceReminderPage({super.key});
+  final String currentUserId = AuthService().currentUser!.id;
 
   @override
   State<ServiceReminderPage> createState() => _ServiceReminderPageState();
@@ -39,6 +43,9 @@ class ServiceReminderPage extends StatefulWidget {
 
 class _ServiceReminderPageState extends State<ServiceReminderPage> {
   final _repo = ServiceReminderRepository();
+  late Future<List<Vehicle>> userVehicle;
+  late Future<List<ServiceType>> serviceTypeList;
+
   final _uuid = const Uuid();
 
   bool _loading = true;
@@ -63,6 +70,11 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
     try {
       final rows = await _repo.fetchForCurrentUser(_userId);
       rows.sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate));
+
+      // fetch dropdown sources
+      userVehicle = VehicleRepository().fetchUserCars();
+      serviceTypeList = ServiceTypeRepository().fetchServiceTypes();
+
       setState(() => _items = rows);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -96,7 +108,7 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       list = list.where((r) {
         final inNotes = (r.notes ?? '').toLowerCase().contains(q);
         final inPlate = r.vehiclePlate.toLowerCase().contains(q);
-        final inType = r.serviceTypeId.toLowerCase().contains(q);
+        final inType = (r.serviceType?.name ?? '').toLowerCase().contains(q);
         return inNotes || inPlate || inType;
       });
     }
@@ -105,14 +117,15 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
 
   // ---------- Actions ----------
   Future<void> _add() async {
-    final res = await _editDialog();
+    final res = await _editDialog(); // no initial values
     if (res == null) return;
+
     final now = DateTime.now();
     final newReminder = ServiceReminder(
       id: _uuid.v4(),
       userId: _userId,
-      vehiclePlate: res.vehiclePlate,
-      serviceTypeId: res.serviceTypeId,
+      vehiclePlate: res.vehiclePlate,      // from dropdown
+      serviceTypeId: res.serviceTypeId,    // from dropdown
       nextDueDate: res.due,
       status: ServiceReminderStatus.active,
       notes: res.notes?.isEmpty == true ? null : res.notes,
@@ -120,14 +133,18 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       createdAt: now,
       updatedAt: now,
     );
+
     try {
       final created = await _repo.create(newReminder, includeId: true);
-      setState(() => _items = [..._items, created]..sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate)));
+      setState(() => _items = [..._items, created]
+        ..sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate)));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder added')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Reminder added')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to add: $e')));
     }
   }
 
@@ -139,6 +156,7 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       initialDue: r.nextDueDate,
     );
     if (res == null) return;
+
     final updated = r.copyWith(
       vehiclePlate: res.vehiclePlate,
       serviceTypeId: res.serviceTypeId,
@@ -146,15 +164,18 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       notes: res.notes?.isEmpty == true ? null : res.notes,
       updatedAt: DateTime.now(),
     );
+
     try {
       final saved = await _repo.update(updated);
       final i = _items.indexWhere((x) => x.id == saved.id);
       if (i != -1) setState(() => _items[i] = saved);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder updated')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Reminder updated')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to update: $e')));
     }
   }
 
@@ -165,10 +186,12 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       await _repo.delete(r.id);
       setState(() => _items.removeWhere((x) => x.id == r.id));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder deleted')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Reminder deleted')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
     }
   }
 
@@ -178,23 +201,28 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       final i = _items.indexWhere((x) => x.id == saved.id);
       if (i != -1) setState(() => _items[i] = saved);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked as done')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Marked as done')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
   Future<void> _snooze(ServiceReminder r, {int days = 14}) async {
     try {
-      final saved = await _repo.snoozeTo(r.id, r.nextDueDate.add(Duration(days: days)));
+      final saved =
+      await _repo.snoozeTo(r.id, r.nextDueDate.add(Duration(days: days)));
       final i = _items.indexWhere((x) => x.id == saved.id);
       if (i != -1) setState(() => _items[i] = saved);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Snoozed $days days')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Snoozed $days days')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -204,10 +232,12 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
       final i = _items.indexWhere((x) => x.id == saved.id);
       if (i != -1) setState(() => _items[i] = saved);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cancelled')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Cancelled')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -354,9 +384,7 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            r.notes?.isNotEmpty == true
-                                ? r.notes!
-                                : 'System\nGenerated Time for your next service!',
+                            r.serviceType?.name ?? 'Unknown Service',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -375,8 +403,12 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
                     const SizedBox(height: 10),
 
                     // meta rows
+                    _metaRow(
+                      'Car',
+                      '${r.vehicle?.brand ?? ''} ${r.vehicle?.model ?? ''} - ${r.vehicle?.spec ?? ''}'.trim(),
+                    ),
                     _metaRow('Plate', r.vehiclePlate),
-                    _metaRow('Service', r.serviceTypeId),
+                    _metaRow('Note', r.notes ?? 'System Generated Reminder'),
                     _metaRow('Due', _fmtDate(r.nextDueDate)),
                     if (r.lastCompletedAt != null)
                       _metaRow('Last completed', _fmtDate(r.lastCompletedAt!)),
@@ -386,13 +418,23 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
                     // quick actions
                     Row(
                       children: [
-                        _textBtn('Mark Done', icon: Icons.check, color: Colors.green,
-                            onTap: r.status == ServiceReminderStatus.done ? null : () => _markDone(r)),
+                        _textBtn('Mark Done',
+                            icon: Icons.check,
+                            color: Colors.green,
+                            onTap: r.status == ServiceReminderStatus.done
+                                ? null
+                                : () => _markDone(r)),
                         const SizedBox(width: 12),
-                        _textBtn('Snooze 14d', icon: Icons.snooze, color: Colors.indigo,
-                            onTap: r.status == ServiceReminderStatus.active ? () => _snooze(r, days: 14) : null),
+                        _textBtn('Snooze 14d',
+                            icon: Icons.snooze,
+                            color: Colors.indigo,
+                            onTap: r.status == ServiceReminderStatus.active
+                                ? () => _snooze(r, days: 14)
+                                : null),
                         const SizedBox(width: 12),
-                        _textBtn('Cancel', icon: Icons.cancel, color: Colors.grey,
+                        _textBtn('Cancel',
+                            icon: Icons.cancel,
+                            color: Colors.grey,
                             onTap: (r.status == ServiceReminderStatus.active ||
                                 r.status == ServiceReminderStatus.snoozed)
                                 ? () => _cancel(r)
@@ -411,16 +453,24 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
 
   Widget _metaRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // align top for multi-line
         children: [
-          Text('$label: ',
-              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+          Text(
+            '$label: ',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           Expanded(
             child: Text(
               value,
+              softWrap: true,
+              maxLines: null,
+              overflow: TextOverflow.visible,
               style: const TextStyle(color: Colors.white),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -474,7 +524,8 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
         decoration: BoxDecoration(
           color: disabled ? Colors.white10 : color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: (disabled ? Colors.white24 : color.withOpacity(0.5))),
+          border: Border.all(
+              color: (disabled ? Colors.white24 : color.withOpacity(0.5))),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -502,8 +553,12 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
         title: const Text('Delete reminder?'),
         content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -519,80 +574,159 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
   }) async {
     final formKey = GlobalKey<FormState>();
     final notesCtl = TextEditingController(text: initialNotes ?? '');
-    final plateCtl = TextEditingController(text: initialPlate ?? '');
-    final typeCtl = TextEditingController(text: initialTypeId ?? '');
     DateTime due = initialDue ?? DateTime.now();
     final dueCtl = TextEditingController(text: _fmtDate(due));
 
+    // local selections (default to current if provided)
+    String? selPlate = initialPlate;
+    String? selTypeId = initialTypeId;
+
     final res = await showDialog<_EditValues>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1C222B),
-        title: const Text('Service Reminder'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(
-                controller: notesCtl,
-                decoration: const InputDecoration(labelText: 'Notes / Subject'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          // 👇 make the dialog “bigger”
+          insetPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+          contentPadding: const EdgeInsets.all(16),
+          backgroundColor: const Color(0xFF1C222B),
+          title: const Text('Service Reminder'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Notes
+                  TextFormField(
+                    controller: notesCtl,
+                    decoration:
+                    const InputDecoration(labelText: 'Notes / Subject'),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Vehicle dropdown
+                  FutureBuilder<List<Vehicle>>(
+                    future: userVehicle,
+                    builder: (ctx, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: LinearProgressIndicator(),
+                        );
+                      }
+                      final vehicles = snap.data ?? const <Vehicle>[];
+                      // default selection if null
+                      selPlate ??=
+                      vehicles.isNotEmpty ? vehicles.first.plateNo : null;
+                      return DropdownButtonFormField<String>(
+                        value: selPlate,
+                        decoration: const InputDecoration(
+                          labelText: 'Vehicle',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: vehicles
+                            .map((v) => DropdownMenuItem<String>(
+                          value: v.plateNo,
+                          child: Text(
+                            '${v.brand} ${v.model ?? ''} — ${v.plateNo}', // uses plate in label
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                            .toList(),
+                        onChanged: (val) => setLocal(() => selPlate = val),
+                        validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Select a vehicle' : null,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Service type dropdown
+                  FutureBuilder<List<ServiceType>>(
+                    future: serviceTypeList,
+                    builder: (ctx, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: LinearProgressIndicator(),
+                        );
+                      }
+                      final types = snap.data ?? const <ServiceType>[];
+                      selTypeId ??= types.isNotEmpty ? types.first.id : null;
+                      return DropdownButtonFormField<String>(
+                        value: selTypeId,
+                        decoration: const InputDecoration(
+                          labelText: 'Service Type',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: types
+                            .map((t) => DropdownMenuItem<String>(
+                          value: t.id,
+                          child: Text(
+                            t.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                            .toList(),
+                        onChanged: (val) => setLocal(() => selTypeId = val),
+                        validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Select a service type' : null,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Due date
+                  TextFormField(
+                    controller: dueCtl,
+                    readOnly: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Next Due Date',
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: due,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setLocal(() {
+                          due = picked;
+                          dueCtl.text = _fmtDate(due);
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: plateCtl,
-                decoration: const InputDecoration(labelText: 'Vehicle Plate'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: typeCtl,
-                decoration: const InputDecoration(labelText: 'Service Type ID'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: dueCtl,
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'Next Due Date',
-                  suffixIcon: Icon(Icons.calendar_today),
-                ),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: due,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    due = picked;
-                    dueCtl.text = _fmtDate(due);
-                  }
-                },
-              ),
-            ]),
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _brandPurple),
+              onPressed: () {
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                if (selPlate == null || selTypeId == null) return;
+
+                Navigator.pop(
+                  ctx,
+                  _EditValues(
+                    notes: notesCtl.text.trim(),
+                    vehiclePlate: selPlate!,
+                    serviceTypeId: selTypeId!,
+                    due: due,
+                  ),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _brandPurple),
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.pop(
-                ctx,
-                _EditValues(
-                  notes: notesCtl.text.trim(),
-                  vehiclePlate: plateCtl.text.trim(),
-                  serviceTypeId: typeCtl.text.trim(),
-                  due: due,
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -602,7 +736,7 @@ class _ServiceReminderPageState extends State<ServiceReminderPage> {
 
 // DTO used by the editor dialog
 class _EditValues {
-  final String notes;
+  final String? notes;
   final String vehiclePlate;
   final String serviceTypeId;
   final DateTime due;

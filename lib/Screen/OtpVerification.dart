@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pinput/pinput.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:workshop_assignment/Repository/userDevice_repo.dart';
 import 'package:workshop_assignment/Repository/user_repo.dart';
+import 'package:workshop_assignment/Service/firebaseMessaging.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 
 import '../Models/UserProfile.dart';
+import '../Repository/settings_repo.dart';
 import '../Service/localNotificationApi.dart';
 import 'Home.dart';
 
@@ -153,6 +156,19 @@ class _OtpVerificationState extends State<OtpVerification> {
         ),
       );
 
+      //add on insert settings and user devices token to firebase
+      SettingsRepository settingsRepository = SettingsRepository();
+      await settingsRepository.create(userId: auth_user.id);
+
+      FirebaseMessagingService firebaseMessagingService= FirebaseMessagingService();
+      String? platform= await firebaseMessagingService.getPlatform();
+      String? deviceToken= await firebaseMessagingService.getToken();
+      if(deviceToken!=null && platform!=null){
+        UserDevicesRepository userDevicesRepository = UserDevicesRepository();
+        await userDevicesRepository.upsertToken(userProfileId: auth_user.id,platform: platform!, deviceToken: deviceToken);
+      }else{
+        print("❌ Failed to get device token or platform");
+      }
 
       // 5) Clean up OTP + local storage
       await _supa.from('user_otps').delete().eq('email', _email!);

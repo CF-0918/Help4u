@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "587161604739",
+    "project_id": "help4ulatest",
+    "storage_bucket": "help4ulatest.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587161604739:android:bc7c57b9d4c8f4fe61c1b6",
+        "android_client_info": {
+          "package_name": "tarc.edui.my.workshop_assignment"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANNT5lf96CUUUZ-NNS8ilyEP98TXCe8QQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

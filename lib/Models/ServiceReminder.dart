@@ -1,5 +1,7 @@
 // lib/models/serviceReminder.dart
 import 'package:flutter/foundation.dart';
+import 'package:workshop_assignment/Models/ServiceType.dart';
+import 'package:workshop_assignment/Models/Vehicle.dart';
 
 enum ServiceReminderStatus { active, done, snoozed, cancelled }
 
@@ -39,20 +41,36 @@ DateTime? _parseDateTime(dynamic v) {
 }
 
 /// DB needs ISO **date-only** strings for `date` columns.
-String _dateOnlyIso(DateTime d) => DateTime(d.year, d.month, d.day).toIso8601String().split('T').first;
+String _dateOnlyIso(DateTime d) =>
+    DateTime(d.year, d.month, d.day).toIso8601String().split('T').first;
+
+/// Safely read a nested map by any of the provided keys.
+Map<String, dynamic>? _nestedMap(Map m, List<String> keys) {
+  for (final k in keys) {
+    final v = m[k];
+    if (v is Map<String, dynamic>) return v;
+  }
+  return null;
+}
 
 @immutable
 class ServiceReminder {
-  final String id;                 // uuid (pk)
-  final String userId;             // fk -> user_profiles.id
-  final String vehiclePlate;       // text
-  final String serviceTypeId;      // uuid
-  final DateTime nextDueDate;      // date (date-only)
-  final DateTime? lastCompletedAt; // date (date-only)
+  final String id;
+  final String userId;
+  final String vehiclePlate;
+  final String serviceTypeId;
+  final DateTime nextDueDate;
+  final DateTime? lastCompletedAt;
   final ServiceReminderStatus status;
   final String? notes;
-  final DateTime createdAt;        // timestamptz
-  final DateTime updatedAt;        // timestamptz
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  /// New field
+  final DateTime? lastNotifiedAt;
+
+  final ServiceType? serviceType;
+  final Vehicle? vehicle;
 
   const ServiceReminder({
     required this.id,
@@ -65,9 +83,15 @@ class ServiceReminder {
     this.notes,
     required this.createdAt,
     required this.updatedAt,
+    this.lastNotifiedAt, // new
+    this.serviceType,
+    this.vehicle,
   });
 
   factory ServiceReminder.fromMap(Map<String, dynamic> m) {
+    final stMap = _nestedMap(m, ['service_type', 'service_types']);
+    final vhMap = _nestedMap(m, ['vehicle', 'vehicles']);
+
     return ServiceReminder(
       id: (m['id'] ?? '').toString(),
       userId: (m['user_id'] ?? '').toString(),
@@ -79,6 +103,9 @@ class ServiceReminder {
       notes: m['notes'] as String?,
       createdAt: _parseDateTime(m['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(m['updated_at']) ?? DateTime.now(),
+      lastNotifiedAt: _parseDateTime(m['last_notified_at']), // new
+      serviceType: stMap != null ? ServiceType.fromJson(stMap) : null,
+      vehicle: vhMap != null ? Vehicle.fromJson(vhMap) : null,
     );
   }
 
@@ -87,41 +114,45 @@ class ServiceReminder {
     'user_id': userId,
     'vehicle_plate': vehiclePlate,
     'service_type_id': serviceTypeId,
-    'next_due_date': _dateOnlyIso(nextDueDate),      // date-only
-    'last_completed_at': lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
+    'next_due_date': _dateOnlyIso(nextDueDate),
+    'last_completed_at':
+    lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
     'status': _statusToString(status),
     'notes': notes,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
+    'last_notified_at': lastNotifiedAt?.toIso8601String(), // new
   };
 
-  /// Use when inserting a NEW row.
   Map<String, dynamic> toInsertMap({bool includeId = false}) {
     final map = <String, dynamic>{
       'user_id': userId,
       'vehicle_plate': vehiclePlate,
       'service_type_id': serviceTypeId,
-      'next_due_date': _dateOnlyIso(nextDueDate),                 // date-only
-      'last_completed_at': lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
+      'next_due_date': _dateOnlyIso(nextDueDate),
+      'last_completed_at':
+      lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
       'status': _statusToString(status),
       'notes': notes,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'last_notified_at': lastNotifiedAt?.toIso8601String(), // new
     };
     if (includeId) map['id'] = id;
     return map;
   }
 
-  /// Use when updating an existing row.
   Map<String, dynamic> toUpdateMap() => {
     'user_id': userId,
     'vehicle_plate': vehiclePlate,
     'service_type_id': serviceTypeId,
-    'next_due_date': _dateOnlyIso(nextDueDate),                 // date-only
-    'last_completed_at': lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
+    'next_due_date': _dateOnlyIso(nextDueDate),
+    'last_completed_at':
+    lastCompletedAt == null ? null : _dateOnlyIso(lastCompletedAt!),
     'status': _statusToString(status),
     'notes': notes,
     'updated_at': DateTime.now().toIso8601String(),
+    'last_notified_at': lastNotifiedAt?.toIso8601String(), // new
   };
 
   ServiceReminder copyWith({
@@ -135,6 +166,9 @@ class ServiceReminder {
     String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? lastNotifiedAt, // new
+    ServiceType? serviceType,
+    Vehicle? vehicle,
   }) {
     return ServiceReminder(
       id: id ?? this.id,
@@ -147,6 +181,9 @@ class ServiceReminder {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      lastNotifiedAt: lastNotifiedAt ?? this.lastNotifiedAt, // new
+      serviceType: serviceType ?? this.serviceType,
+      vehicle: vehicle ?? this.vehicle,
     );
   }
 }

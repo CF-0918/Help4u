@@ -11,7 +11,7 @@ import '../Models/Case.dart';
 import '../Repository/case_repo.dart';                    // CaseModel + CaseStatus
 
 import '../Repository/serviceReminder_repo.dart';
-import '../models/serviceReminder.dart';
+import '../Models/ServiceReminder.dart';
 
 class Progress extends StatefulWidget {
   final String bookingId;                        // pass the appointment's booking_id

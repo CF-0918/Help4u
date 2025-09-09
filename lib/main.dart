@@ -1,4 +1,5 @@
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,14 +9,26 @@ import 'package:workshop_assignment/Screen/SignUp.dart';
 import 'package:workshop_assignment/Screen/wrapperr.dart';
 import 'Screen/Login.dart';
 import 'Screen/ResetPasswod.dart';
+import 'Service/firebaseMessaging.dart';
 import 'Service/localNotificationApi.dart';
+import 'firebase_options.dart';
 
 
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
+Future<void> initializeFireabseDefault() async {
+  FirebaseApp app = await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  print('Initialized default app $app');
+}
+
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();   // <-- no await
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await initializeFireabseDefault();
+
   await Supabase.initialize(
     url: 'https://rqpedrthgpgocmiliext.supabase.co',
     anonKey: 'sb_publishable_Pt3H8RVWKV3RVggnU6m9QA_IA9iqgDD',
@@ -31,6 +44,8 @@ void main() async {
     }
   });
 
+  final fcmService = FirebaseMessagingService();//helper that i crearte to use firebase
+  await fcmService.initNotifications();//this will initliaze or get peromission and token
   await NotificationsApi.init();
   runApp(const MyApp());
 }
