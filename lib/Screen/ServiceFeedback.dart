@@ -2,7 +2,6 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:workshop_assignment/authencation/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ServiceFeedback extends StatefulWidget {
@@ -22,7 +21,6 @@ class ServiceFeedback extends StatefulWidget {
 class _ServiceFeedbackState extends State<ServiceFeedback> {
   final Color surface = const Color(0xFF1F2937);
   final ImagePicker _picker = ImagePicker();
-  final _auth = AuthService();
 
   double ratingRate = 0;
   final TextEditingController _commentController = TextEditingController();
@@ -306,18 +304,28 @@ class _ServiceFeedbackState extends State<ServiceFeedback> {
                         final fileBytes = await picked.readAsBytes();
                         final userId = supabase.auth.currentUser?.id;
 
-                        final url = await _auth.uploadFile(
-                          folder: 'feedback',
-                          fileData: fileBytes,
-                          fileName: '${widget.caseId}_${userId}.png',
-                          forcePng: true,
-                          upsert: true,
+                        // 👇 Store inside Help4uBucket/feedback/
+                        final filePath = "feedback/${widget.caseId}_$userId.jpg";
+
+                        await supabase.storage
+                            .from("Help4uBucket") // bucket name
+                            .uploadBinary(
+                          filePath,
+                          fileBytes,
+                          fileOptions: const FileOptions(upsert: true), // overwrite if exists
                         );
+
+                        // 👇 Get the public URL for DB storage
+                        final publicUrl = supabase.storage
+                            .from("Help4uBucket")
+                            .getPublicUrl(filePath);
+
                         setState(() {
-                          _uploadedImage = url;
+                          _uploadedImage = publicUrl; // save public URL in state
                         });
                       }
                     },
+
 
                     child: DottedBorder(
                       options: RectDottedBorderOptions(
