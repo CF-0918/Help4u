@@ -123,6 +123,12 @@ class AuthService {
       throw Exception('No user found with this phone number.');
     }
 
+    String accStatus =await _userRepo.getAccStatus(phoneNo);
+    print("Account status: $accStatus");
+    if(accStatus!="active"){
+      throw Exception('Account is $accStatus. Please contact support.');
+    }
+
     // Supabase v2 login
     return await _supabase.auth.signInWithPassword(
       email: email,

@@ -32,15 +32,6 @@ class FirebaseMessagingService {
     String? token = await getToken();
     print("✅ FCM Token: $token");
 
-    // Save token if logged in
-    if (authService.currentUserId != null && token != null) {
-      await UserDevicesRepository().upsertToken(
-        userProfileId: authService.currentUserId!,
-        deviceToken: token,
-        platform: Platform.isAndroid ? 'android' : 'ios',
-      );
-    }
-
     // Listen for token refresh
     _messaging.onTokenRefresh.listen((newToken) {
       print("♻️ FCM Token refreshed: $newToken");

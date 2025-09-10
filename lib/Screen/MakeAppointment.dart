@@ -10,6 +10,7 @@ import 'package:workshop_assignment/Repository/appointment_repo.dart';
 import 'package:workshop_assignment/Repository/outlet_repo.dart';
 import 'package:workshop_assignment/Repository/serviceType_repo.dart';
 import 'package:workshop_assignment/Repository/vehicle_repo.dart';
+import 'package:workshop_assignment/Screen/MyVehicle.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 import 'package:flutter/services.dart';
 
@@ -292,7 +293,7 @@ class _MakeAppointmentState extends State<MakeAppointment> {
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => EditProfile()));
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => MyVehicle()));
                       },
                       icon: const Icon(Icons.add_circle_outline),
                       label: const Text("Add Vehicle"),

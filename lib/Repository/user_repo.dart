@@ -143,5 +143,47 @@ Future<String?> getEmailByPhone(String phoneNo) async {
     return UserProfile.fromMap(response);
   }
 
+  Future<bool>disabledUserAcc(String uid) async {
+    try{
+      await _client
+          .from('user_profiles')
+          .update({'status': "disabled"})
+          .eq('id', uid);
+
+      return true;
+    } catch (e) {
+      print("disableUserAcc error: $e");
+      return false;
+    }
+  }
+  Future<String> getAccStatus(String phoneNo) async {
+    try {
+      // Debug what we're actually querying
+      // ignore: avoid_print
+      print('getAccStatus query phone: $phoneNo');
+
+      final row = await _client
+          .from('user_profiles')
+          .select('status')
+          .eq('phone',phoneNo)
+          .limit(1)
+          .maybeSingle(); // returns Map<String, dynamic>? or null
+
+      // Debug what we got back
+      // ignore: avoid_print
+      print('getAccStatus row: $row');
+
+      if (row != null && row['status'] != null) {
+        return row['status'] as String;
+      }
+      return 'Unknown';
+    } catch (e) {
+      // ignore: avoid_print
+      print('getAccStatus error: $e');
+      return 'Unknown';
+    }
+  }
+
+
 
 }

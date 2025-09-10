@@ -47,6 +47,14 @@ void main() async {
   final fcmService = FirebaseMessagingService();//helper that i crearte to use firebase
   await fcmService.initNotifications();//this will initliaze or get peromission and token
   await NotificationsApi.init();
+
+  final auth = Supabase.instance.client.auth;
+  final session = auth.currentSession; // or (await auth.getSession()).data.session;
+  if(auth.currentSession != null&& auth.currentUser != null) {
+    print('access: ${session?.accessToken}');
+    print('refresh: ${session?.refreshToken}');
+  }
+
   runApp(const MyApp());
 }
 
