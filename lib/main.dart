@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:workshop_assignment/Provider/LocationProvider.dart';
+import 'package:workshop_assignment/Screen/AppointmentDetails.dart';
 import 'package:workshop_assignment/Screen/Home.dart';
+import 'package:workshop_assignment/Screen/RouteWrapper.dart';
 import 'package:workshop_assignment/Screen/SignUp.dart';
 import 'package:workshop_assignment/Screen/wrapperr.dart';
 import 'Screen/Login.dart';
@@ -15,7 +17,24 @@ import 'firebase_options.dart';
 
 
 
-final navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+String normalizeRoute(String? raw) {
+  var r = (raw ?? '').trim();
+  if (r.isEmpty) return r;
+  if (!r.startsWith('/')) r = '/$r';
+  // Case-insensitive aliases → canonical keys in routes:
+  switch (r.toLowerCase()) {
+    case '/appointments':
+      return '/Appointments';
+    case '/servicereminder':
+      return '/ServiceReminder';
+    case '/home':
+      return '/home';
+    default:
+      return r;
+  }
+}
 
 Future<void> initializeFireabseDefault() async {
   FirebaseApp app = await Firebase.initializeApp(
@@ -70,11 +89,45 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => LocationProvider()),
       ],
       child: MaterialApp(
-        navigatorKey: navigatorKey,   // << important
+        navigatorKey: navigatorKey,
+        // DO NOT set `home:` if you also define '/' in routes (avoid conflicts).
+        initialRoute: '/',
         routes: {
           '/login': (_) => const Login(),
-          '/home' : (_) => const Home(),   // <-- add this
-          // add more routes here...
+          '/home': (_) => const Home(),
+          // Wrappers read ModalRoute.settings.arguments and pass to real pages
+          '/AppointmentDetails': (_) => const AppointmentsRouteWrapper(),
+          '/ServiceReminder': (_) => const ServiceReminderRouteWrapper(),
+        },
+        onGenerateRoute: (settings) {
+          final normalized = normalizeRoute(settings.name);
+          // If it's already one of our canonical keys, return null here
+          // so Flutter will look it up in `routes:` above.
+          if (normalized == settings.name) return null;
+
+          // Otherwise, build a route to the canonical destination.
+          switch (normalized) {
+            case '/AppointmentDetails':
+              return MaterialPageRoute(
+                settings: RouteSettings(name: normalized, arguments: settings.arguments),
+                builder: (_) => const AppointmentsRouteWrapper(),
+              );
+            case '/ServiceReminder':
+              return MaterialPageRoute(
+                settings: RouteSettings(name: normalized, arguments: settings.arguments),
+                builder: (_) => const ServiceReminderRouteWrapper(),
+              );
+          }
+          return null; // allow unknownRoute to catch
+        },
+        onUnknownRoute: (settings) {
+          debugPrint('❓ onUnknownRoute: "${settings.name}"  args=${settings.arguments}');
+          return MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: const Text('Unknown Route')),
+              body: Center(child: Text('No route named "${settings.name}"')),
+            ),
+          );
         },
         debugShowCheckedModeBanner: false,
         title: 'Workshop App',

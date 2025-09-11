@@ -220,12 +220,13 @@ class AppointmentRepository {
           .select('*, user_profiles(*), outlets(*), service_type(*),vehicle(*)')
           .eq('userid', userId)
           .eq('booking_id', bookingId)
-          .single();
+          .maybeSingle();
 
       // Supabase returns a List<Map<String, dynamic>>
       if (response is Map<String,dynamic>) {
         return Appointment.fromJson(response);
       } else {
+        print("Response is not a map: $response");
         throw Exception('Unexpected response format');
       }
     } catch (e) {

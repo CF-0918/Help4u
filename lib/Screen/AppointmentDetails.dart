@@ -48,6 +48,7 @@ class _AppointmentDetailsState extends State<AppointmentDetails> {
 
   @override
   void initState() {
+    print("User passed Booking ID: ${widget.appointmentID}");
     super.initState();
     _load();
   }

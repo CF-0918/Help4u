@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:workshop_assignment/Repository/notifications_repo.dart';
 
 import 'package:workshop_assignment/authencation/auth_service.dart';
 import 'package:workshop_assignment/Repository/user_repo.dart';
@@ -15,6 +16,8 @@ import '../TabScreen/ProgressTab.dart';
 import '../TabScreen/AppointmentsTab.dart';
 import '../TabScreen/ProfileTab.dart';
 import 'package:workshop_assignment/Provider/LocationProvider.dart';
+
+import 'NotificationsPage.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -41,6 +44,8 @@ class _HomeState extends State<Home> {
   double ratingChange = 0.0;
   List<Appointment> appointments = [];
   List<Appointment> completedAppointments = [];
+
+  int totalUnreadNotification= 0;
 
   late PageController _pageController;
 
@@ -95,6 +100,9 @@ class _HomeState extends State<Home> {
       final newRating = 4.5;
       final newRatingChange = 2.3;
 
+      final totalUnreadNotificationInt= await NotificationRepository().fetchUnreadCount(uid!);
+      print("Total unread notifications: $totalUnreadNotificationInt");
+
       setState(() {
         _workshops = outlets;
         appointments = data;
@@ -102,6 +110,7 @@ class _HomeState extends State<Home> {
         completedPercentage = newCompletedPercentage;
         rating = newRating;
         ratingChange = newRatingChange;
+        totalUnreadNotification= totalUnreadNotificationInt;
       });
 
     } catch (e) {
@@ -153,6 +162,7 @@ class _HomeState extends State<Home> {
           ? HomeAppBar(
         userName: userDetails?.name ?? 'User',
         workshops: _workshops,
+          totalUnread:totalUnreadNotification
       )
           : null,
       body: Stack(
@@ -255,14 +265,18 @@ class _HomeState extends State<Home> {
 }
 
 class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
+  final String userName;
+  final List<Outlet> workshops;
+  final int totalUnread;
+
+
   const HomeAppBar({
     super.key,
     required this.workshops,
     required this.userName,
+    required this.totalUnread
   });
 
-  final String userName;
-  final List<Outlet> workshops;
 
   @override
   State<HomeAppBar> createState() => _HomeAppBarState();
@@ -412,34 +426,56 @@ class _HomeAppBarState extends State<HomeAppBar> {
             ),
           ],
         ),
-        const _BellWithDot(),
+         _BellWithDot(totalUnread:widget.totalUnread),
       ],
     );
   }
 }
 
-class _BellWithDot extends StatelessWidget {
-  const _BellWithDot();
+class _BellWithDot extends StatefulWidget {
+  final int totalUnread;
+  const _BellWithDot({super.key, required this.totalUnread});
 
   @override
+  State<_BellWithDot> createState() => _BellWithDotState();
+}
+
+class _BellWithDotState extends State<_BellWithDot> {
+  @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none, color: Colors.white),
-          onPressed: () {},
-        ),
-        Positioned(
-          right: 10,
-          top: 10,
-          child: Container(
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.notifications_none, color: Colors.white),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+            },
           ),
-        ),
-      ],
+          widget.totalUnread>0?
+          Positioned(
+            right: 10,
+            top: 10,
+            child: Container(
+              width: 15,
+              height: 15,
+              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+              child:Center(
+                      child: Text(
+                        widget.totalUnread.toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+
+            ),
+          )
+              : const SizedBox.shrink(),
+        ],
+      ),
     );
   }
 }
