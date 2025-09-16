@@ -35,6 +35,22 @@ class NotificationRepository {
     return 0;
   }
 
+  Future<List<NotificationItem>>getReadNotification(String userId) async {
+    final rows = await _client
+        .from(table)
+        .select()
+        .eq('user_has_read', true)
+        .eq('user_id', userId)
+        .order('sent_at', ascending: false);
+
+    if (rows is List) {
+      return rows
+          .map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
   Future<List<NotificationItem>>getchUnreadNotifications(String userId) async {
     final rows = await _client
         .from(table)

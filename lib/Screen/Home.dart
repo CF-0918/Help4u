@@ -45,7 +45,7 @@ class _HomeState extends State<Home> {
   List<Appointment> appointments = [];
   List<Appointment> completedAppointments = [];
 
-  int totalUnreadNotification= 0;
+  int totalUnreadNotification = 0;
 
   late PageController _pageController;
 
@@ -95,12 +95,16 @@ class _HomeState extends State<Home> {
       final completedData = await _appointmentRepo.fetchCompletedAppointments();
       final cancelledData = await _appointmentRepo.fetchCancelledAppointments();
 
-      final totalAppointments = data.length + completedData.length + cancelledData.length;
-      final newCompletedPercentage = totalAppointments > 0 ? ((completedData.length / totalAppointments) * 100).toInt() : 0;
+      final totalAppointments =
+          data.length + completedData.length + cancelledData.length;
+      final newCompletedPercentage = totalAppointments > 0
+          ? ((completedData.length / totalAppointments) * 100).toInt()
+          : 0;
       final newRating = 4.5;
       final newRatingChange = 2.3;
 
-      final totalUnreadNotificationInt= await NotificationRepository().fetchUnreadCount(uid!);
+      final totalUnreadNotificationInt =
+      await NotificationRepository().fetchUnreadCount(uid!);
       print("Total unread notifications: $totalUnreadNotificationInt");
 
       setState(() {
@@ -110,9 +114,8 @@ class _HomeState extends State<Home> {
         completedPercentage = newCompletedPercentage;
         rating = newRating;
         ratingChange = newRatingChange;
-        totalUnreadNotification= totalUnreadNotificationInt;
+        totalUnreadNotification = totalUnreadNotificationInt;
       });
-
     } catch (e) {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -148,9 +151,7 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
-      // ✅ HomeTab no longer receives data; it fetches by itself
       HomeTab(onTabSelected: _onTabSelected),
-
       const ProgressTab(),
       AppointmentsTab(initialIndex: _appointmentsTabIndex),
       const ProfileTab(),
@@ -162,7 +163,7 @@ class _HomeState extends State<Home> {
           ? HomeAppBar(
         userName: userDetails?.name ?? 'User',
         workshops: _workshops,
-          totalUnread:totalUnreadNotification
+        totalUnread: totalUnreadNotification,
       )
           : null,
       body: Stack(
@@ -174,7 +175,8 @@ class _HomeState extends State<Home> {
             },
             children: pages,
           ),
-          if (_busy) const ModalBarrier(dismissible: false, color: Color(0x88000000)),
+          if (_busy)
+            const ModalBarrier(dismissible: false, color: Color(0x88000000)),
           if (_busy) const Center(child: CircularProgressIndicator()),
         ],
       ),
@@ -193,15 +195,57 @@ class _HomeState extends State<Home> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.car_rental), label: 'Progress'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month), label: 'Appointments'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_month), label: 'Appointments'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );
   }
 
-  // ===== Nearest-location logic =====
+
+  Future<bool> _handleLocationPermission(BuildContext context) async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Check if location services are enabled
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location services are disabled. Please enable them.')),
+      );
+      return false;
+    }
+
+    // Check permission
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permissions are denied')),
+        );
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permissions are permanently denied, cannot request.')),
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+
   Future<void> _maybeSuggestNearest(BuildContext context) async {
+    final hasPermission = await _handleLocationPermission(context);
+    if (!hasPermission) return;
+
+    final pos = await Geolocator.getCurrentPosition();
+
     try {
       if (_workshops.isEmpty) return;
       final enabled = await Geolocator.isLocationServiceEnabled();
@@ -210,14 +254,15 @@ class _HomeState extends State<Home> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
         return;
       }
-      final pos = await Geolocator.getCurrentPosition();
       Outlet nearest = _workshops.first;
       double nearestDist = double.infinity;
       for (final w in _workshops) {
-        final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, w.latitude, w.longitude);
+        final d = Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, w.latitude, w.longitude);
         if (d < nearestDist) {
           nearestDist = d;
           nearest = w;
@@ -226,10 +271,12 @@ class _HomeState extends State<Home> {
       final provider = context.read<LocationProvider>();
       final currentId = provider.locationId;
       if (currentId == nearest.outletID) return;
-      final current = _workshops.firstOrNullWhere((w) => w.outletID == currentId);
+      final current =
+      _workshops.firstOrNullWhere((w) => w.outletID == currentId);
       double currentDist = double.infinity;
       if (current != null) {
-        currentDist = Geolocator.distanceBetween(pos.latitude, pos.longitude, current.latitude, current.longitude);
+        currentDist = Geolocator.distanceBetween(pos.latitude, pos.longitude,
+            current.latitude, current.longitude);
       }
       if (currentDist - nearestDist > 500) {
         if (!mounted) return;
@@ -240,7 +287,8 @@ class _HomeState extends State<Home> {
             context: context,
             builder: (_) => AlertDialog(
               title: const Text('Nearby workshop found'),
-              content: Text('You are about $km km from "${nearest.outletName}".\nSwitch to this location?'),
+              content: Text(
+                  'You are about $km km from "${nearest.outletName}".\nSwitch to this location?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -258,9 +306,7 @@ class _HomeState extends State<Home> {
           }
         });
       }
-    } catch (_) {
-      // swallow location/permission errors quietly
-    }
+    } catch (_) {}
   }
 }
 
@@ -269,14 +315,12 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final List<Outlet> workshops;
   final int totalUnread;
 
-
   const HomeAppBar({
     super.key,
     required this.workshops,
     required this.userName,
-    required this.totalUnread
+    required this.totalUnread,
   });
-
 
   @override
   State<HomeAppBar> createState() => _HomeAppBarState();
@@ -299,7 +343,10 @@ class _HomeAppBarState extends State<HomeAppBar> {
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: Text("Choose a workshop",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
               ),
               if (items.isEmpty)
                 const Padding(
@@ -314,7 +361,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
                   value: w.outletID,
                   groupValue: selected,
                   onChanged: (v) => Navigator.pop(context, v),
-                  title: Text(w.outletName, style: const TextStyle(color: Colors.white)),
+                  title: Text(w.outletName,
+                      style: const TextStyle(color: Colors.white)),
                   activeColor: Colors.white,
                 )),
               const SizedBox(height: 8),
@@ -332,10 +380,13 @@ class _HomeAppBarState extends State<HomeAppBar> {
   @override
   Widget build(BuildContext context) {
     final selected = context.watch<LocationProvider>().locationId;
-    final selectedOutlet = widget.workshops.firstOrNullWhere((w) => w.outletID == selected);
-    final locationDisplayName = selectedOutlet?.outletName ?? "Select location";
+    final selectedOutlet =
+    widget.workshops.firstOrNullWhere((w) => w.outletID == selected);
+    final locationDisplayName =
+        selectedOutlet?.outletName ?? "Select location";
     final hour = DateTime.now().hour;
-    final greet = hour < 12 ? 'Morning' : (hour < 18 ? 'Afternoon' : 'Evening');
+    final greet =
+    hour < 12 ? 'Morning' : (hour < 18 ? 'Afternoon' : 'Evening');
 
     return AppBar(
       backgroundColor: Colors.black,
@@ -376,7 +427,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
                   "$greet, ${widget.userName}",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  style:
+                  const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
               ],
             ),
@@ -394,7 +446,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
                   borderRadius: BorderRadius.circular(20),
                   onTap: () => _pickLocation(context, selected!),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: const Color(0xFF2A2A2D),
                       borderRadius: BorderRadius.circular(20),
@@ -402,7 +455,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.place, size: 16, color: Colors.white),
+                        const Icon(Icons.place,
+                            size: 16, color: Colors.white),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -417,7 +471,8 @@ class _HomeAppBarState extends State<HomeAppBar> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.white70),
+                        const Icon(Icons.keyboard_arrow_down,
+                            size: 18, color: Colors.white70),
                       ],
                     ),
                   ),
@@ -426,26 +481,22 @@ class _HomeAppBarState extends State<HomeAppBar> {
             ),
           ],
         ),
-         _BellWithDot(totalUnread:widget.totalUnread),
+        _BellWithDot(totalUnread: widget.totalUnread),
       ],
     );
   }
 }
 
-class _BellWithDot extends StatefulWidget {
+class _BellWithDot extends StatelessWidget {
   final int totalUnread;
   const _BellWithDot({super.key, required this.totalUnread});
 
   @override
-  State<_BellWithDot> createState() => _BellWithDotState();
-}
-
-class _BellWithDotState extends State<_BellWithDot> {
-  @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const NotificationsPage()));
       },
       child: Stack(
         clipBehavior: Clip.none,
@@ -453,27 +504,19 @@ class _BellWithDotState extends State<_BellWithDot> {
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white),
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const NotificationsPage()));
             },
           ),
-          widget.totalUnread>0?
-          Positioned(
-            right: 10,
-            top: 10,
-            child: Container(
-              width: 15,
-              height: 15,
-              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-              child:Center(
-                      child: Text(
-                        widget.totalUnread.toString(),
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-
+          if (totalUnread > 0)
+            const Positioned(
+              right: 12,
+              top: 12,
+              child: CircleAvatar(
+                radius: 5,
+                backgroundColor: Colors.red,
+              ),
             ),
-          )
-              : const SizedBox.shrink(),
         ],
       ),
     );

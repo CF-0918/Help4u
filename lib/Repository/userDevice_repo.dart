@@ -17,9 +17,10 @@ class UserDevicesRepository {
         .upsert({
       'user_id': userProfileId,
       'platform': platform,
-      'token': deviceToken,                         // <- token
-      'updated_at': DateTime.now().toIso8601String()
-    }, onConflict: 'user_id,platform')
+      'token': deviceToken,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'token')
+
         .select()
         .single();
 

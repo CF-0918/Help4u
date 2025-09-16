@@ -14,9 +14,9 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final NotificationRepository _repo = NotificationRepository();
-  List<NotificationItem> notifications = [];
+  List<NotificationItem> notifications = [];     // unread
+  List<NotificationItem> readNotifications = []; // read
   bool _loading = true;
-  int limit = 20;
 
   @override
   void initState() {
@@ -25,50 +25,30 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _loadNotifications() async {
-    AuthService authService=AuthService();
+    AuthService authService = AuthService();
     if (authService.currentUserId == null) {
       return;
     }
     final userId = authService.currentUserId!;
     try {
       final list = await _repo.getchUnreadNotifications(userId);
+      final readList = await _repo.getReadNotification(userId);
       if (!mounted) return;
       setState(() {
         notifications = list;
+        readNotifications = readList;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Error loading notifications')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error loading notifications')),
+      );
       setState(() => _loading = false);
     }
   }
 
   Future<void> _onRefresh() => _loadNotifications();
-
-  // Future<void> _onTap(NotificationItem n) async {
-  //   // optimistic mark-as-read
-  //   if (!n.userHasRead) {
-  //     setState(() {
-  //       final i = notifications.indexWhere((x) => x.id == n.id);
-  //       if (i != -1) notifications[i] = notifications[i].copyWith(userHasRead: true);
-  //     });
-  //     try { await _repo.markAsRead(n.id); } catch (_) {}
-  //   }
-  //   // navigate by data.screen
-  //   final data = n.data;
-  //   final route = (data['screen'] as String?)?.trim();
-  //   if (route == null || route.isEmpty) {
-  //     if (!mounted) return;
-  //     ScaffoldMessenger.of(context)
-  //         .showSnackBar(const SnackBar(content: Text('No route in notification')));
-  //     return;
-  //   }
-  //   if (!mounted) return;
-  //   Navigator.of(context).pushNamed(route, arguments: data);
-  // }
-
 
   Future<void> _onTap(NotificationItem n) async {
     // optimistic mark-as-read
@@ -77,20 +57,25 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final i = notifications.indexWhere((x) => x.id == n.id);
         if (i != -1) notifications[i] = notifications[i].copyWith(userHasRead: true);
       });
-      try { await _repo.markAsRead(n.id); } catch (e) { debugPrint('mark err: $e'); }
+      try {
+        await _repo.markAsRead(n.id);
+      } catch (e) {
+        debugPrint('mark err: $e');
+      }
     }
 
     // normalize route name
     final raw = (n.data['screen'] as String?) ?? '';
     var route = raw.trim();
     if (route.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('No route in notification')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No route in notification')),
+      );
       return;
     }
     if (!route.startsWith('/')) route = '/$route';
 
-    // alias common variations to your registered keys
+    // alias common variations
     final aliases = <String, String>{
       '/appointmentdetails': '/AppointmentDetails',
       '/servicereminder': '/ServiceReminder',
@@ -98,7 +83,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     route = aliases[route.toLowerCase()] ?? route;
 
     debugPrint('➡️ navigating to "$route" with args: ${n.data}');
-    // use global navigatorKey to avoid nested Navigator issues
     navigatorKey.currentState?.pushNamed(route, arguments: n.data);
   }
 
@@ -118,8 +102,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
           children: [
             Text(n.body),
             const SizedBox(height: 4),
-            Text('Sent: ${n.sentAt.toLocal()}',
-                style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              'Sent: ${n.sentAt.toLocal()}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ),
         trailing: n.userHasRead
@@ -133,12 +119,34 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     final body = _loading
         ? const Center(child: CircularProgressIndicator())
-        : notifications.isEmpty
+        : (notifications.isEmpty && readNotifications.isEmpty)
         ? const Center(child: Text('No notifications yet'))
-        : ListView.builder(
+        : ListView(
       padding: const EdgeInsets.only(top: 8, bottom: 16),
-      itemCount: notifications.length,
-      itemBuilder: (_, i) => _tile(notifications[i]),
+      children: [
+        if (notifications.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              "Unread",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ),
+          ...notifications.map(_tile).toList(),
+        ],
+        if (readNotifications.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              "Read",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ),
+          ...readNotifications.map(_tile).toList(),
+        ],
+      ],
     );
 
     return Scaffold(

@@ -159,15 +159,24 @@ class _OtpVerificationState extends State<OtpVerification> {
       //add on insert settings and user devices token to firebase
       SettingsRepository settingsRepository = SettingsRepository();
       await settingsRepository.create(userId: auth_user.id);
+      try {
+        FirebaseMessagingService firebaseMessagingService = FirebaseMessagingService();
+        String? platform = await firebaseMessagingService.getPlatform();
+        String? deviceToken = await firebaseMessagingService.getToken();
 
-      FirebaseMessagingService firebaseMessagingService= FirebaseMessagingService();
-      String? platform= await firebaseMessagingService.getPlatform();
-      String? deviceToken= await firebaseMessagingService.getToken();
-      if(deviceToken!=null && platform!=null){
-        UserDevicesRepository userDevicesRepository = UserDevicesRepository();
-        await userDevicesRepository.upsertToken(userProfileId: auth_user.id,platform: platform!, deviceToken: deviceToken);
-      }else{
-        print("❌ Failed to get device token or platform");
+        if (deviceToken != null && platform != null) {
+          UserDevicesRepository userDevicesRepository = UserDevicesRepository();
+          await userDevicesRepository.upsertToken(
+            userProfileId: auth_user.id,
+            platform: platform,
+            deviceToken: deviceToken,
+          );
+        } else {
+          print("❌ Failed to get device token or platform");
+        }
+      } catch (e, stackTrace) {
+        print("🔥 Error while saving device token: $e");
+        print("📌 StackTrace: $stackTrace");
       }
 
       // 5) Clean up OTP + local storage
