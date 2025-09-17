@@ -80,7 +80,7 @@ class VehicleRepository {
       // Step 2: Proceed to delete if no bookings
       await _client.from('vehicle').delete().eq('plateno', plateNo);
     } catch (e) {
-      throw Exception("Error deleting vehicle: $e");//hehe
+      throw Exception("Error deleting vehicle: $e");//heheheeh
     }
   }
 }
