@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:workshop_assignment/Models/Vehicle.dart';
 import 'package:workshop_assignment/Repository/vehicle_repo.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class MyVehicle extends StatefulWidget {
   const MyVehicle({super.key});
@@ -78,7 +80,7 @@ class _MyVehicleState extends State<MyVehicle> {
       manYear: res.manYear,
       type: res.type,
       vehImage: res.vehImage,
-      userID: v.userID, // keep same user
+      userID: v.userID,
     );
 
     try {
@@ -103,11 +105,10 @@ class _MyVehicleState extends State<MyVehicle> {
           .showSnackBar(const SnackBar(content: Text('Vehicle deleted')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())), // will show our custom message hehehehe
+        SnackBar(content: Text(e.toString())),
       );
     }
   }
-
 
   Future<_EditVehicle?> _editDialog({Vehicle? v}) async {
     final formKey = GlobalKey<FormState>();
@@ -116,101 +117,147 @@ class _MyVehicleState extends State<MyVehicle> {
     final brandCtl = TextEditingController(text: v?.brand ?? '');
     final modelCtl = TextEditingController(text: v?.model ?? '');
     final specCtl = TextEditingController(text: v?.spec ?? '');
-    final manyearCtl =
-    TextEditingController(text: v?.manYear?.toString() ?? '');
+    final manyearCtl = TextEditingController(text: v?.manYear?.toString() ?? '');
     final typeCtl = TextEditingController(text: v?.type ?? '');
-    final vehimageCtl = TextEditingController(text: v?.vehImage ?? '');
+
+    String? uploadedUrl = v?.vehImage;
+
+    final picker = ImagePicker();
+
+    Future<void> _pickAndUploadImage() async {
+      final picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+
+      final supabase = Supabase.instance.client;
+      final fileBytes = await picked.readAsBytes();
+      final userId = supabase.auth.currentUser?.id;
+
+      final filePath =
+          "car/${plateCtl.text}_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg";
+
+      try {
+        // 👇 store inside Help4uBucket/car/
+        await supabase.storage
+            .from("Help4uBucket") // ✅ correct bucket name
+            .uploadBinary(
+          "car/$filePath",     // put files inside "car" folder
+          fileBytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+
+        uploadedUrl = supabase.storage
+            .from("Help4uBucket") // ✅ correct bucket name
+            .getPublicUrl("car/$filePath");
+
+        setState(() {}); // refresh preview
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Upload failed: $e")),
+        );
+      }
+
+    }
 
     final res = await showDialog<_EditVehicle>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(v == null ? 'Add Vehicle' : 'Edit Vehicle'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: plateCtl,
-                  decoration: const InputDecoration(labelText: 'Plate No'),
-                  validator: (v) =>
-                  (v == null || v.isEmpty) ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: regnoCtl,
-                  decoration:
-                  const InputDecoration(labelText: 'Registration No'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: brandCtl,
-                  decoration: const InputDecoration(labelText: 'Brand'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: modelCtl,
-                  decoration: const InputDecoration(labelText: 'Model'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: specCtl,
-                  decoration: const InputDecoration(labelText: 'Spec'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: manyearCtl,
-                  decoration:
-                  const InputDecoration(labelText: 'Manufacture Year'),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: typeCtl,
-                  decoration: const InputDecoration(labelText: 'Type'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: vehimageCtl,
-                  decoration:
-                  const InputDecoration(labelText: 'Vehicle Image URL'),
-                ),
-              ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(v == null ? 'Add Vehicle' : 'Edit Vehicle'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: plateCtl,
+                    decoration: const InputDecoration(labelText: 'Plate No'),
+                    validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: regnoCtl,
+                    decoration:
+                    const InputDecoration(labelText: 'Registration No'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: brandCtl,
+                    decoration: const InputDecoration(labelText: 'Brand'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: modelCtl,
+                    decoration: const InputDecoration(labelText: 'Model'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: specCtl,
+                    decoration: const InputDecoration(labelText: 'Spec'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: manyearCtl,
+                    decoration:
+                    const InputDecoration(labelText: 'Manufacture Year'),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: typeCtl,
+                    decoration: const InputDecoration(labelText: 'Type'),
+                  ),
+                  const SizedBox(height: 20),
+
+                  if (uploadedUrl != null)
+                    Image.network(uploadedUrl!,
+                        width: 100, height: 100, fit: BoxFit.cover),
+
+                  const SizedBox(height: 8),
+
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await _pickAndUploadImage();
+                      setLocal(() {});
+                    },
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text("Upload Vehicle Image"),
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                Navigator.pop(
+                  ctx,
+                  _EditVehicle(
+                    plateNo: plateCtl.text.trim(),
+                    regNo: regnoCtl.text.trim().isEmpty
+                        ? null
+                        : regnoCtl.text.trim(),
+                    brand: brandCtl.text.trim(),
+                    model: modelCtl.text.trim(),
+                    spec: specCtl.text.trim().isEmpty
+                        ? null
+                        : specCtl.text.trim(),
+                    manYear: int.tryParse(manyearCtl.text.trim()),
+                    type: typeCtl.text.trim().isEmpty
+                        ? null
+                        : typeCtl.text.trim(),
+                    vehImage: uploadedUrl,
+                  ),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (!(formKey.currentState?.validate() ?? false)) return;
-              Navigator.pop(
-                ctx,
-                _EditVehicle(
-                  plateNo: plateCtl.text.trim(),
-                  regNo: regnoCtl.text.trim().isEmpty
-                      ? null
-                      : regnoCtl.text.trim(),
-                  brand: brandCtl.text.trim(),
-                  model: modelCtl.text.trim(),
-                  spec: specCtl.text.trim().isEmpty
-                      ? null
-                      : specCtl.text.trim(),
-                  manYear: int.tryParse(manyearCtl.text.trim()),
-                  type: typeCtl.text.trim().isEmpty
-                      ? null
-                      : typeCtl.text.trim(),
-                  vehImage: vehimageCtl.text.trim().isEmpty
-                      ? null
-                      : vehimageCtl.text.trim(),
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
