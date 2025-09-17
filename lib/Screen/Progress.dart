@@ -9,9 +9,10 @@ import 'package:uuid/uuid.dart';
 import '../Components/Timeline_tile.dart';      // your MyStepTile
 import '../Models/Case.dart';
 import '../Repository/case_repo.dart';                    // CaseModel + CaseStatus
-
+import '../Repository/payment_repo.dart';
 import '../Repository/serviceReminder_repo.dart';
 import '../Models/ServiceReminder.dart';
+
 
 class Progress extends StatefulWidget {
   final String bookingId;                        // pass the appointment's booking_id
@@ -179,6 +180,25 @@ class _ProgressState extends State<Progress> {
   Widget build(BuildContext context) {
     const purple = Color(0xFF9333EA);
     const purpleDark = Color(0xFF7C3AED);
+
+    // --- Price Calculation Logic ---
+    double calculatedTotalAmount = 0.0;
+    const double labourFee = 100.0;
+    const double sparePartFee = 100.0; // Assuming this is a fixed fee for now
+    String currencyCode = "MYR"; // Default to MYR
+
+    if (_case != null && _case!.appointment != null) {
+      // 1. Service Type Price
+      double serviceTypePrice = _case!.appointment!.serviceType.price ?? 0.0;
+      calculatedTotalAmount = serviceTypePrice + labourFee + sparePartFee;
+
+      // You might want to get currency from your service type or a global config
+      // For now, it's hardcoded to MYR. If serviceType has currency:
+      // currencyCode = _case!.appointment!.serviceType.currency ?? "MYR";
+    }
+
+    String amountToPayString = calculatedTotalAmount.toStringAsFixed(2);
+    // --- End of Price Calculation Logic ---
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B1220),
@@ -369,22 +389,110 @@ class _ProgressState extends State<Progress> {
                       ),
                     ),
                   ):
-                  isPaymentNow? TextButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/payment', arguments: {
-                        'caseId': _case!.caseId,
-                        'bookingId': widget.bookingId,
-                      });
-                    },
-                    child: const Text(
-                      "Make Payment",
-                      style: TextStyle(
-                        color: Color(0xFF10B981),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                  isPaymentNow? Container(
+                    child: TextButton(
+                      onPressed: () async {
+                        try {
+                          print('Starting payment process for case: ${_case!.caseId}');
+
+                          // Show loading indicator
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => const Center(
+                              child: CircularProgressIndicator(color: Color(0xFF9333EA)),
+                            ),
+                          );
+
+                          // Navigate to payment screen with proper arguments
+                          final result = await Navigator.pushNamed(
+                              context,
+                              '/payment',
+                              arguments: {
+                                'caseId': _case!.caseId,
+                                'bookingId': widget.bookingId,
+                                'amount': amountToPayString,
+                                'currency': currencyCode,
+                                'description': 'Payment for ${_case!.appointment?.vehicle.model ?? "Vehicle"} service - Case: ${_case!.caseId}',
+                              }
+                          );
+
+                          // Dismiss loading indicator
+                          if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
+                          print('Payment result: $result');
+
+                          // Handle the payment result
+                          if (result != null && result is Map) {
+                            final status = result['status'];
+
+                            if (status == 'success') {
+                              final transactionId = result['transactionId'];
+                              final paypalOrderId = result['paypalOrderId'];
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Payment Successful! Transaction ID: $transactionId'),
+                                    backgroundColor: const Color(0xFF10B981),
+                                  ),
+                                );
+                              }
+
+                              // Update case status to done after successful payment
+                              print('Payment successful, updating case status to done');
+                              await _updateCaseStatus(CaseStatus.done);
+
+                            } else if (status == 'cancelled' || status == 'cancelled_by_user') {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Payment was cancelled.'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              }
+                            } else {
+                              // Payment failed
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Payment Status: ${result['message'] ?? 'Unknown error'}'),
+                                    backgroundColor: Colors.yellow,
+                                  ),
+                                );
+                              }
+                            }
+                          } else {
+                            print('No result returned from payment');
+                          }
+                        } catch (e) {
+                          print('Error in payment process: $e');
+                          // Dismiss loading indicator if still showing
+                          if (mounted) {
+                            try {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            } catch (_) {}
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error processing payment: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text(
+                        "Make Payment",
+                        style: TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ):
+                  ) :
                   const Text(
                     "In Progress",
                     style: TextStyle(
@@ -453,18 +561,29 @@ class _ProgressState extends State<Progress> {
                   const SizedBox(height: 12),
 
                   _DetailRow(
-                    label: "Service Type",
-                    value: _case!.appointment?.serviceType.name ?? '-',
+                    label: "Mileage",
+                    value: (_case!.appointment?.mileage ?? 0).toString() + " km", // Added km
                   ),
                   _DetailRow(
-                    label: "Mileage",
-                    value: (_case!.appointment?.mileage ?? 0).toString(),
-                  ),
-                  // You can add price if your ServiceType has it
-                  // _DetailRow(label: "Cost Estimate", value: "RM ${_case!.appointment?.serviceType.price ?? '-'}",
-                  //           valueColor: Color(0xFF10B981)),
+                      label: "Service Price",
+                      value: "RM ${(_case!.appointment?.serviceType.price ?? 0.0).toStringAsFixed(2)}",
+                      valueColor: const Color(0xFF10B981)),
+                  _DetailRow(
+                      label: "Labour Fee",
+                      value: "RM ${labourFee.toStringAsFixed(2)}",
+                      valueColor: const Color(0xFF10B981)),
+                  _DetailRow(
+                      label: "Spare Part Fee",
+                      value: "RM ${sparePartFee.toStringAsFixed(2)}",
+                      valueColor: const Color(0xFF10B981)),
+                  const Divider(color: Colors.white24, height: 20),
+                  _DetailRow(
+                      label: "Total Amount Due",
+                      value: "RM ${amountToPayString}",
+                      valueColor: const Color(0xFF60A5FA)), // Blue for total
                 ],
               ),
+
             ),
 
             // ===== Workshop Info Card =====

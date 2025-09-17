@@ -11,9 +11,11 @@ import 'package:workshop_assignment/Screen/SignUp.dart';
 import 'package:workshop_assignment/Screen/wrapperr.dart';
 import 'Screen/Login.dart';
 import 'Screen/ResetPasswod.dart';
+import 'Screen/payment.dart';
 import 'Service/firebaseMessaging.dart';
 import 'Service/localNotificationApi.dart';
 import 'firebase_options.dart';
+import 'Screen/Billing.dart';
 
 
 
@@ -31,6 +33,8 @@ String normalizeRoute(String? raw) {
       return '/ServiceReminder';
     case '/home':
       return '/home';
+    case '/payment':
+      return '/payment';
     default:
       return r;
   }
@@ -95,6 +99,7 @@ class MyApp extends StatelessWidget {
         routes: {
           '/login': (_) => const Login(),
           '/home': (_) => const Home(),
+          '/billing': (_) => const Billing(),
           // Wrappers read ModalRoute.settings.arguments and pass to real pages
           '/AppointmentDetails': (_) => const AppointmentsRouteWrapper(),
           '/ServiceReminder': (_) => const ServiceReminderRouteWrapper(),
@@ -103,6 +108,33 @@ class MyApp extends StatelessWidget {
           final normalized = normalizeRoute(settings.name);
           // If it's already one of our canonical keys, return null here
           // so Flutter will look it up in `routes:` above.
+          if (normalized == '/payment') {
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                settings: RouteSettings(name: normalized, arguments: args),
+                builder: (_) => PaymentPage(
+                  caseId: args['caseId'] as String,
+                  bookingId: args['bookingId'] as String,
+                  amount: args['amount'] as String,
+                  currency: args['currency'] as String? ?? 'MYR',
+                  description: args['description'] as String?,
+                ),
+              );
+            } else {
+              // Handle case where no arguments are provided
+              return MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('Payment Error')),
+                  body: const Center(
+                    child: Text('Payment arguments missing'),
+                  ),
+                ),
+              );
+            }
+          }
+
+
           if (normalized == settings.name) return null;
 
           // Otherwise, build a route to the canonical destination.

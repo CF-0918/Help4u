@@ -63,7 +63,9 @@ dependencies:
   mime: ^2.0.0
   firebase_core: ^4.1.0
   firebase_messaging: ^16.0.1
-
+  flutter_paypal_payment: 1.0.8 # Check pub.dev for the latest version
+  http: ^1.1.0 # Still good to have if you make other API calls
+  webview_flutter: ^4.4.1 # The PayPal package likely uses this under the hood or has its own webview
 
 dev_dependencies:
   flutter_test:
