@@ -56,7 +56,7 @@ class _CaseHistoryState extends State<CaseHistory> {
       final allCases = await _casesRepo.getCompletedCasesForUser(userId);
 
       if (!mounted) return;
-      setState(() => _cases = allCases);
+      setState(() => _cases = allCases);  
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,7 +214,6 @@ class _CaseHistoryState extends State<CaseHistory> {
 
               const SizedBox(height: 12),
 
-              // Workshop label only
 // Workshop label only
         Row(
           children: [
@@ -229,7 +228,6 @@ class _CaseHistoryState extends State<CaseHistory> {
 
         const SizedBox(height: 12),
 
-// ===== Feedback Button =====
 // ===== Feedback Button =====
         Align(
           alignment: Alignment.centerRight,
@@ -400,10 +398,6 @@ class _CaseHistoryState extends State<CaseHistory> {
       ),
     );
   }
-
-
-
-
 
   // ========= helpers =========
 
