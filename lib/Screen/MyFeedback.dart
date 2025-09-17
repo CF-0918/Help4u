@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MyFeedback extends StatefulWidget {
   const MyFeedback({super.key});
@@ -9,357 +10,199 @@ class MyFeedback extends StatefulWidget {
 
 class _MyFeedbackState extends State<MyFeedback> {
   final Color surface = const Color(0xFF1F2937);
+  final supabase = Supabase.instance.client;
 
-  DateTime? _startDate;
-  DateTime? _endDate;
-
-  final TextEditingController _startController = TextEditingController();
-  final TextEditingController _endController = TextEditingController();
+  List<Map<String, dynamic>> feedbackList = [];
+  bool loading = true;
 
   @override
-  void dispose() {
-    _startController.dispose();
-    _endController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _fetchFeedback();
   }
 
-  Future<void> _pickDate({
-    required bool isStart,
-  }) async {
-    final DateTime now = DateTime.now();
+  Future<void> _fetchFeedback() async {
+    try {
+      final user = supabase.auth.currentUser;
 
-    final DateTime? picked = await showDatePicker(
-      barrierColor: Colors.black.withOpacity(0.5),
-      barrierLabel: "Select Date",
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 1),
-    );
+      if (user == null) {
+        debugPrint("❌ No logged-in user, skipping fetch");
+        setState(() {
+          feedbackList = [];
+          loading = false;
+        });
+        return;
+      }
 
-    if (picked != null) {
+      debugPrint("🔑 Current user: ${user.id}");
+
+      final response = await supabase
+          .from('service_feedback')
+          .select(
+        '''
+          feedback_id,
+          comments,
+          rating,
+          images,
+          created_at,
+          booking:booking_id(
+            booking_id,
+            bookingdate,
+            bookingtime,
+            vehicleplateno,
+            service_type(name)
+          )
+          ''',
+      )
+          .eq('userid', user.id)
+          .order('created_at', ascending: false);
+
+      debugPrint("📦 Raw service_feedback response: $response");
+
       setState(() {
-        if (isStart) {
-          _startDate = picked;
-          _startController.text =
-          "${picked.day}/${picked.month}/${picked.year}";
-        } else {
-          _endDate = picked;
-          _endController.text =
-          "${picked.day}/${picked.month}/${picked.year}";
-        }
+        feedbackList = List<Map<String, dynamic>>.from(response);
+        loading = false;
+      });
+    } catch (e, st) {
+      debugPrint("❌ Error fetching feedback: $e");
+      debugPrintStack(stackTrace: st);
+      setState(() {
+        feedbackList = [];
+        loading = false;
       });
     }
   }
 
-  void _showFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        contentPadding: const EdgeInsets.all(12),
-        title: const Text("Filter"),
-        content: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0,horizontal: 5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _startController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: "Start Date",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  suffixIcon: const Icon(Icons.calendar_today),
-                ),
-                onTap: () => _pickDate(isStart: true),
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _endController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: "End Date",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  suffixIcon: const Icon(Icons.calendar_today),
-                ),
-                onTap: () => _pickDate(isStart: false),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-          style: TextButton.styleFrom(
-            textStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: Colors.white,
-              ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            )
-
-      ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple.withOpacity(0.7),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () {
-              // Use _startDate and _endDate here
-              Navigator.pop(context);
-            },
-            child: const Text("Apply",style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return  Scaffold(
+    return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text("My Feedback",style: TextStyle(
-            fontSize: 20,
-          color:Colors.white,
-        ),),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 15.0),
-            child: IconButton(onPressed: (){
-              _showFilterDialog();
-            }, icon: Icon(Icons.sort)),
-          )
-        ],
+        title: const Text("My Feedback",
+            style: TextStyle(fontSize: 20, color: Colors.white)),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-             Container(
-               decoration: BoxDecoration(
-                 borderRadius: BorderRadius.circular(10),
-                 color: surface,
-               ),
-               child:Padding(
-                   padding: EdgeInsets.symmetric(vertical: 10,horizontal: 8),
-                 child: Row(
-                   children: [
-                     _cardRate(figure: 12,title:"Total Review",colorCode:Colors.blueAccent),
-                     _cardRate(figure: 4.3,title:"Average Ratings",colorCode:Colors.yellow),
-                     _cardRate(figure: 8,title:"Recommendation",colorCode:Colors.green),
-                   ],
-                 )
-
-               )
-             ),
-              SizedBox(height: 10,),
-              ListView.separated(
-                separatorBuilder: (context, index) => SizedBox(height: 10,),
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                itemCount: 5,
-                itemBuilder: (context, index) {
-                  return _feedbackCard();
-                  },
-              ),
-            ],
-          ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : feedbackList.isEmpty
+          ? const Center(
+        child: Text(
+          "No feedback found.",
+          style: TextStyle(color: Colors.white70, fontSize: 16),
         ),
-      ),
-    );
-  }
-}
+      )
+          : ListView.separated(
+        padding: const EdgeInsets.all(12),
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemCount: feedbackList.length,
+        itemBuilder: (context, index) {
+          final fb = feedbackList[index];
+          final booking = fb['booking'] ?? {};
+          final serviceType = booking['service_type'] ?? {};
+          final List images = fb['images'] ?? [];
 
-Widget _cardRate({required num figure,required String title,required Color colorCode}){
- return Expanded(
-   child: Card(
-     color: Colors.white,
-     shape: RoundedRectangleBorder(
-       borderRadius: BorderRadius.circular(10),
-     ),
-     child: Container(
-       padding: EdgeInsets.symmetric(horizontal: 5,vertical: 15),
-       child: Column(
-         children: [
-           Text("$figure",style: TextStyle(
-             color: colorCode,
-             fontSize: 30,
-             fontWeight: FontWeight.bold
-           ),),
-           SizedBox(height: 5,),
-           Text("$title",style: TextStyle(
-             fontSize: 13,
-             fontWeight: FontWeight.bold,
-             color: Colors.grey,
-           ))
-           ],
-       ),
-     ),
-     ),
- );
-}
-Widget _feedbackCard() {
-  const surface = Color(0xFF1F2937);
+          bool expanded = false;
 
-  return Container(
-    decoration: BoxDecoration(
-      color: surface,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Top row: avatar + title/date + (optional) more icon
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Avatar / photo
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Icon(Icons.oil_barrel,size: 30,)
-            ),
-            const SizedBox(width: 12),
-
-            // Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title + date
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text(
-                        "Oil Change",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
+          return StatefulBuilder(
+            builder: (context, setStateTile) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      serviceType['name'] ?? 'Unknown Service',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
                       ),
-                      Text(
-                        "12 Dec 2025",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-
-                  // Service ID
-                  const Text(
-                    "Service ID: SM-123456",
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Plate: ${booking['vehicleplateno'] ?? 'N/A'}",
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 14),
+                    ),
+                    Text(
+                      "Completed: ${booking['bookingdate'] ?? ''} ${booking['bookingtime'] ?? ''}",
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
 
-                  // Rating row (4 filled stars, 1 grey) + score + recommendation chip
-                  Row(
-                    children: [
-                      const Icon(Icons.star, size: 18, color: Colors.amber),
-                      const Icon(Icons.star, size: 18, color: Colors.amber),
-                      const Icon(Icons.star, size: 18, color: Colors.amber),
-                      const Icon(Icons.star, size: 18, color: Colors.amber),
-                      const Icon(Icons.star, size: 18, color: Colors.grey),
-                      const SizedBox(width: 8),
-                      const Text(
-                        "4.0",
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green, width: 1),
+                    // ⭐ Rating stars
+                    Row(
+                      children: List.generate(5, (i) {
+                        final rating =
+                            (fb['rating'] as num?)?.toDouble() ?? 0.0;
+                        return Icon(
+                          i < rating.round()
+                              ? Icons.star
+                              : Icons.star_border,
+                          color: Colors.amber,
+                          size: 18,
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+
+                    if (fb['comments'] != null &&
+                        fb['comments'].toString().trim().isNotEmpty)
+                      Text(
+                        fb['comments'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          height: 1.4,
                         ),
-                        child: const Text(
-                          "Recommended",
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                      ),
+
+                    const SizedBox(height: 8),
+
+                    if (images.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: () {
+                          setStateTile(() {
+                            expanded = !expanded;
+                          });
+                        },
+                        icon: Icon(
+                          expanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: Colors.white70,
+                        ),
+                        label: Text(
+                          expanded
+                              ? "Hide Images"
+                              : "Show Images (${images.length})",
+                          style:
+                          const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+
+                    if (expanded && images.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: MediaQuery.of(context).size.width * 0.5, // ✅ 50% of screen width
+                          child: Image.network(
+                            images.first,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Comment
-                  const Text(
-                    "Great service! The team was quick and professional. "
-                        "They explained everything clearly and even gave me advice "
-                        "on how to maintain my car better in the future. "
-                        "I really appreciate the attention to detail and the friendly attitude. "
-                        "Definitely will recommend this service center to my friends and family.",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      height: 1.5, // 👈 adds nicer line spacing
-                    ),
-                    softWrap: true,
-                  ),
-
-                ],
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 12),
-
-        // Actions
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          spacing: 3.0,
-          children: [
-            TextButton(
-              onPressed: () {
-                // TODO: handle edit
-              },
-              child: const Text("Edit Details"),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: () {
-                // TODO: handle view
-              },
-              child: const Text("View"),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }
