@@ -146,7 +146,7 @@ class _MyVehicleState extends State<MyVehicle> {
         );
 
         uploadedUrl = supabase.storage
-            .from("Help4uBucket") // ✅ correct bucket name
+            .from("Help4uBucket") // ✅ correct bucket name a
             .getPublicUrl("car/$filePath");
 
         setState(() {}); // refresh preview
