@@ -1,11 +1,13 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_paypal_payment/flutter_paypal_payment.dart';
-import 'package:uuid/uuid.dart';
+import 'package:workshop_assignment/Models/Case.dart';
+import 'package:workshop_assignment/Repository/case_repo.dart';
 import '../Repository/payment_repo.dart';
 import '../Models/Payment.dart';
 import '../authencation/auth_service.dart';
-import '../Screen/invoice.dart'; // Import invoice screen
+import '../Screen/invoice.dart';
+import 'Progress.dart';
 
 class PaymentPage extends StatefulWidget {
   final String caseId;
@@ -34,11 +36,11 @@ class _PaymentPageState extends State<PaymentPage> {
   bool _isInitializing = true;
   String? _errorMessage;
   Payment? _currentPayment;
-  bool _isProcessingSuccess = false; // Add flag to prevent double navigation
+  bool _isProcessingSuccess = false;
 
-  // PayPal Sandbox Credentials - Replace with your actual credentials
-  final String _clientId = "AdyO0rKYJjK1nVnIBlx5EnCz0vc-8a1xWOH9yDca_sY2jVGaENS3-YGL3CiiEtfbJPSpGNzmRfr12pxy";
-  final String _secretKey = "EBqc8Bmcz2KHLCB2NpDoesmTXiU3mp3e-X-2LZ5BuQOBPDiymla6l_mHaHVwHNPc5VZmagW4hs2rGkAs";
+// PayPal Sandbox Credentials - Replace with your actual credentials
+final String _clientId = "AdyO0rKYJjK1nVnIBlx5EnCz0vc-8a1xWOH9yDca_sY2jVGaENS3-YGL3CiiEtfbJPSpGNzmRfr12pxy";
+final String _secretKey = "EBqc8Bmcz2KHLCB2NpDoesmTXiU3mp3e-X-2LZ5BuQOBPDiymla6l_mHaHVwHNPc5VZmagW4hs2rGkAs";
   final bool _sandboxMode = true;
 
   @override
@@ -51,13 +53,11 @@ class _PaymentPageState extends State<PaymentPage> {
     try {
       log('Initializing payment for case: ${widget.caseId}');
 
-      // Validate amount
       final amountValue = double.tryParse(widget.amount);
       if (amountValue == null || amountValue <= 0) {
         throw Exception('Invalid payment amount: ${widget.amount}');
       }
 
-      // Check if user is authenticated
       final userId = _authService.currentUserId;
       if (userId == null) {
         throw Exception('User not authenticated');
@@ -65,29 +65,22 @@ class _PaymentPageState extends State<PaymentPage> {
 
       log('User authenticated: $userId');
 
-      // Check if payment already exists for this case
       final existingPayment = await _paymentRepo.getPaymentByCaseId(widget.caseId);
 
       if (existingPayment != null && existingPayment.isCompleted) {
-        log('Payment already completed, navigating to invoice');
-        // Navigate directly to invoice if payment is already completed
+        log('Payment already completed, redirecting to invoice');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => InvoiceScreen(paymentId: existingPayment.id),
-            ),
+            MaterialPageRoute(builder: (_) => InvoiceScreen(paymentId: existingPayment.id)),
           );
         });
         return;
       }
 
-      // Create or get existing payment record
       if (existingPayment != null && existingPayment.isPending) {
         _currentPayment = existingPayment;
-        log('Using existing payment: ${existingPayment.id}');
       } else {
-        log('Creating new payment record');
         _currentPayment = await _paymentRepo.createPayment(
           caseId: widget.caseId,
           bookingId: widget.bookingId,
@@ -96,20 +89,15 @@ class _PaymentPageState extends State<PaymentPage> {
           userId: userId,
           status: 'pending',
         );
-        log('Created payment: ${_currentPayment!.id}');
       }
 
-      setState(() {
-        _isInitializing = false;
-      });
+      setState(() => _isInitializing = false);
 
-      // Small delay to ensure UI is built before starting PayPal
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted && !_isProcessingSuccess) {
         _startPayPalPayment();
       }
-
     } catch (e) {
       log('Error initializing payment: $e');
       setState(() {
@@ -122,18 +110,12 @@ class _PaymentPageState extends State<PaymentPage> {
   void _startPayPalPayment() {
     if (_currentPayment == null || _isProcessingSuccess) return;
 
-    log('Starting PayPal payment');
-
     final transactions = [
       {
         "amount": {
           "total": widget.amount,
           "currency": widget.currency.toUpperCase(),
-          "details": {
-            "subtotal": widget.amount,
-            "shipping": '0',
-            "shipping_discount": 0
-          }
+          "details": {"subtotal": widget.amount, "shipping": '0', "shipping_discount": 0}
         },
         "description": widget.description ?? "Payment for Case ID: ${widget.caseId}",
       }
@@ -147,31 +129,39 @@ class _PaymentPageState extends State<PaymentPage> {
           clientId: _clientId,
           secretKey: _secretKey,
           transactions: transactions,
-          note: "Case: ${widget.caseId}. Booking: ${widget.bookingId}",
+          note: "Case: ${widget.caseId}, Booking: ${widget.bookingId}",
           onSuccess: _handlePaymentSuccess,
           onError: _handlePaymentError,
           onCancel: _handlePaymentCancel,
         ),
       ),
-    );
+    ).then((result) {
+      // 👇 This runs when user comes back from PayPal screen
+      log("Returned from PayPal page: $result");
+
+      setState(() {
+        if (!_isProcessingSuccess) {
+          _isInitializing = false;
+          _errorMessage = "Payment was not completed.";
+        }
+      });
+    });
+
   }
 
   Future<void> _handlePaymentSuccess(Map params) async {
-    if (_isProcessingSuccess) return; // Prevent double processing
+    if (_isProcessingSuccess) return;
     _isProcessingSuccess = true;
 
-    log("PayPal onSuccess: $params");
+    log("PayPal success: $params");
 
     try {
       if (_currentPayment == null) throw Exception('Payment record not found');
 
-      // Extract PayPal response data
       final paypalOrderId = params['orderID']?.toString() ?? params['token']?.toString();
-      final transactionId = params['paymentId']?.toString() ?? params['id']?.toString() ?? paypalOrderId;
+      final transactionId =
+          params['paymentId']?.toString() ?? params['id']?.toString() ?? paypalOrderId;
 
-      log('Updating payment status to completed');
-
-      // Update payment status in database
       final updatedPayment = await _paymentRepo.updatePaymentStatus(
         paymentId: _currentPayment!.id,
         status: 'completed',
@@ -180,29 +170,69 @@ class _PaymentPageState extends State<PaymentPage> {
         additionalData: Map<String, dynamic>.from(params),
       );
 
-      log('Payment updated successfully, navigating to invoice');
+      //yijun u forget to update case status to done
+      try {
+        await CasesRepo().updateCaseStatus(widget.caseId, CaseStatus.done);
+      } catch (e, stack) {
+        // Log the error
+        debugPrint("Error updating case status: $e");
+        debugPrintStack(stackTrace: stack);
 
-      // Navigate directly to invoice screen with the payment ID
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => InvoiceScreen(paymentId: updatedPayment.id),
+        // Show error to user
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Row(
+              children: const [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 8),
+                Text(
+                  'Failed to update case status ❌',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
           ),
         );
       }
 
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_)=> InvoiceScreen(paymentId: updatedPayment.id)),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.green, // 🟢 Green background
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white), // ✅ White icon
+                SizedBox(width: 8),
+                Text(
+                  'Payment completed successfully',
+                  style: TextStyle(color: Colors.white), // ⚪ White text
+                ),
+              ],
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            duration: Duration(seconds: 3), // auto dismiss after 3s
+          ),
+        );
+      }
     } catch (e) {
-      log("Error handling payment success: $e");
-      _isProcessingSuccess = false; // Reset flag on error
-      _handlePaymentError("Error processing successful payment: $e");
+      log("Error on success flow: $e");
+      _isProcessingSuccess = false;
+      _handlePaymentError("Error processing payment: $e");
     }
   }
 
   Future<void> _handlePaymentError(dynamic error) async {
     if (_isProcessingSuccess) return;
 
-    log("PayPal onError: $error");
+    log("PayPal error: $error");
 
     try {
       if (_currentPayment != null) {
@@ -212,151 +242,158 @@ class _PaymentPageState extends State<PaymentPage> {
         );
       }
     } catch (e) {
-      log("Error updating payment failure status: $e");
+      log("Error marking payment failed: $e");
     }
 
     if (mounted) {
-      Navigator.pop(context, {
-        'status': 'error',
-        'message': error.toString(),
-        'caseId': widget.caseId,
-        'bookingId': widget.bookingId,
-      });
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => Progress(bookingId: widget.bookingId)),
+      );
     }
   }
 
   Future<void> _handlePaymentCancel() async {
     if (_isProcessingSuccess) return;
 
-    log('PayPal onCancel');
+    log("PayPal cancelled");
 
     try {
       if (_currentPayment != null) {
         await _paymentRepo.markPaymentCancelled(_currentPayment!.id);
       }
     } catch (e) {
-      log("Error updating payment cancel status: $e");
+      log("Error marking payment cancelled: $e");
     }
 
     if (mounted) {
-      Navigator.pop(context, {
-        'status': 'cancelled_by_user',
-        'caseId': widget.caseId,
-        'bookingId': widget.bookingId,
+      setState(() {
+        _isInitializing = false;
+        _isProcessingSuccess = false;
       });
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => Progress(bookingId: widget.bookingId)),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isInitializing) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0B1220),
-        appBar: AppBar(
-          title: const Text("Initializing Payment", style: TextStyle(color: Colors.white)),
-          backgroundColor: const Color(0xFF111827),
-          centerTitle: true,
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: Color(0xFF9333EA)),
-              SizedBox(height: 20),
-              Text(
-                "Setting up your payment...",
-                style: TextStyle(color: Colors.white70, fontSize: 16),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildLoading("Initializing Payment", "Setting up your payment...");
     }
-
     if (_errorMessage != null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0B1220),
-        appBar: AppBar(
-          title: const Text("Payment Error", style: TextStyle(color: Colors.white)),
-          backgroundColor: const Color(0xFF111827),
-          centerTitle: true,
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                const SizedBox(height: 20),
-                const Text(
-                  "Payment Error",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-                const SizedBox(height: 30),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1F2937),
-                        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
-                      ),
-                      onPressed: () => Navigator.of(context).pop({
-                        'status': 'error',
-                        'message': _errorMessage,
-                        'caseId': widget.caseId,
-                      }),
-                      child: const Text('Go Back', style: TextStyle(color: Colors.white)),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF9333EA),
-                        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _errorMessage = null;
-                          _isInitializing = true;
-                          _isProcessingSuccess = false;
-                        });
-                        _initializePayment();
-                      },
-                      child: const Text('Retry', style: TextStyle(color: Colors.white)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _buildError();
     }
+    return _buildSummary();
+  }
 
-    // Payment summary screen (shown while processing)
+  Widget _buildLoading(String title, String message) {
     return Scaffold(
       backgroundColor: const Color(0xFF0B1220),
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => Progress(bookingId: widget.bookingId)));
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(
+               backgroundColor: Colors.red, // 🔴 red background
+               content: Row(
+                 children: const [
+                   Icon(Icons.error, color: Colors.white), // ⚠️ icon
+                   SizedBox(width: 8),
+                   Text(
+                     'Payment process cancelled',
+                     style: TextStyle(color: Colors.white), // ⚪ white text
+                   ),
+                 ],
+               ),
+               behavior: SnackBarBehavior.floating,
+               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+             ),
+           );
+
+          },
+          icon: const Icon(Icons.arrow_back),
+        ),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF111827),
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF9333EA)),
+            const SizedBox(height: 20),
+            Text(message, style: const TextStyle(color: Colors.white70, fontSize: 16)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B1220),
+      appBar: AppBar(
+        title: const Text("Payment Error", style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF111827),
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 60),
+              const SizedBox(height: 20),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.white70, fontSize: 16)),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF9333EA)),
+                onPressed: () {
+                  setState(() {
+                    _errorMessage = null;
+                    _isInitializing = true;
+                    _isProcessingSuccess = false;
+                  });
+                  _initializePayment();
+                },
+                child: const Text('Retry', style: TextStyle(color: Colors.white)),
+              ),
+              const SizedBox(height: 50),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummary() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B1220),
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => Progress(bookingId: widget.bookingId)));
+
+          },
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: const Text("Payment Summary", style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF111827),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: false, // Prevent going back during processing
+        automaticallyImplyLeading: false,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -370,20 +407,14 @@ class _PaymentPageState extends State<PaymentPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Payment Details",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  const Text("Payment Details",
+                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   _PaymentDetailRow(label: "Case ID", value: widget.caseId),
                   _PaymentDetailRow(label: "Booking ID", value: widget.bookingId),
                   _PaymentDetailRow(label: "Amount", value: "${widget.currency} ${widget.amount}"),
-                  _PaymentDetailRow(label: "Payment Method", value: "PayPal"),
-                  _PaymentDetailRow(label: "Status", value: "Processing..."),
+                  const _PaymentDetailRow(label: "Payment Method", value: "PayPal"),
+                  const _PaymentDetailRow(label: "Status", value: "Processing..."),
                 ],
               ),
             ),
@@ -393,31 +424,8 @@ class _PaymentPageState extends State<PaymentPage> {
                 children: [
                   CircularProgressIndicator(color: Color(0xFF9333EA)),
                   SizedBox(height: 20),
-                  Text(
-                    "Redirecting to PayPal...",
-                    style: TextStyle(color: Colors.white70, fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1F2937).withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF9333EA).withOpacity(0.3)),
-              ),
-              child: const Column(
-                children: [
-                  Icon(Icons.security, color: Color(0xFF9333EA), size: 24),
-                  SizedBox(height: 8),
-                  Text(
-                    "Your payment is secured by PayPal",
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text("Redirecting to PayPal...",
+                      style: TextStyle(color: Colors.white70, fontSize: 16)),
                 ],
               ),
             ),
@@ -441,20 +449,11 @@ class _PaymentDetailRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 16),
-          ),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 16)),
           Flexible(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(value,
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis),
           ),
         ],
       ),

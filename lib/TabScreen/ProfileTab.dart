@@ -8,6 +8,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:workshop_assignment/Repository/user_repo.dart';
+import 'package:workshop_assignment/Screen/Billing.dart';
 import 'package:workshop_assignment/Screen/CaseHistory.dart';
 import 'package:workshop_assignment/authencation/auth_service.dart';
 
@@ -33,10 +34,12 @@ class ProfileTab extends StatefulWidget {
 class ProfileTabItem {
   final IconData icon;
   final String label;
+  final bool inFuture;
   final WidgetBuilder? builder; // screen page as a builder
   final VoidCallback? onTap;
 
   const ProfileTabItem({
+    this.inFuture=false,
     required this.icon,
     required this.label,
     this.builder,
@@ -48,10 +51,11 @@ final List<ProfileTabItem> profileTabsList = [
   ProfileTabItem(icon: Icons.person,        label: 'Edit Profile',        builder: (_) => const EditProfile()),
   ProfileTabItem(icon: Icons.lock,          label: 'Change Password',     builder: (_) => const ChangePassword()),
   ProfileTabItem(icon: Icons.history,       label: 'Case History', builder: (_) => const CaseHistory()),
+  ProfileTabItem(icon: Icons.receipt_long,          label: 'Billing & Invoices',     builder: (_) => const Billing()),
   ProfileTabItem(icon: Icons.car_rental,      label: 'My Vehicle',         builder: (_) => const MyVehicle()),
   ProfileTabItem(icon: Icons.note_alt,      label: 'My Feedback',         builder: (_) => const MyFeedback()),
   ProfileTabItem(icon: Icons.notifications, label: 'Service Reminder',    builder: (_) => ServiceReminderPage()),
-  ProfileTabItem(icon: Icons.card_giftcard, label: 'Vouchers & Rewards',  builder: (_) => const Rewards()),
+  ProfileTabItem(icon: Icons.card_giftcard, label: 'Vouchers & Rewards',  builder: (_) => const Rewards(),inFuture:true),
   ProfileTabItem(icon: Icons.settings,      label: 'Settings',            builder: (_) => const Settings()),
   ProfileTabItem(icon: Icons.logout,        label: 'Log out',             builder: (_) => const LogOut()),
 ];
@@ -537,6 +541,7 @@ class _ProfileTabState extends State<ProfileTab> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: ProfileTile(
+                      isFuture: tab.inFuture,
                       icon: tab.icon,
                       label: tab.label,
                       onTap: tab.onTap ??
@@ -568,12 +573,14 @@ class _ProfileTabState extends State<ProfileTab> {
 
 // ---------- Tile widget ----------
 class ProfileTile extends StatelessWidget {
+  final bool isFuture;
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
 
   const ProfileTile({
     super.key,
+    this.isFuture = false,
     required this.icon,
     required this.label,
     this.onTap,
@@ -581,12 +588,14 @@ class ProfileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = isFuture;
+
     return Material(
       color: const Color(0xFF1F2937),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
+        onTap: isDisabled ? null : onTap, // disable tap if future
         child: SizedBox(
           height: 64,
           child: Padding(
@@ -595,19 +604,34 @@ class ProfileTile extends StatelessWidget {
               children: [
                 const Icon(Icons.chevron_right,
                     color: Colors.transparent), // spacer
-                Icon(icon, size: 24, color: const Color(0xFF9333EA)),
+
+                // Icon color depends on state
+                Icon(
+                  icon,
+                  size: 24,
+                  color: isDisabled
+                      ? Colors.grey // grey if future
+                      : const Color(0xFF9333EA),
+                ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Text(
-                    label,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    isDisabled ? "$label (Coming Soon)" : label,
+                    style: TextStyle(
+                      color: isDisabled ? Colors.grey : Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
+                      fontStyle: isDisabled ? FontStyle.italic : FontStyle.normal,
                     ),
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFF9333EA)),
+
+                Icon(
+                  Icons.chevron_right,
+                  color: isDisabled ? Colors.grey : const Color(0xFF9333EA),
+                ),
               ],
             ),
           ),

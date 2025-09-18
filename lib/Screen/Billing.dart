@@ -3,6 +3,7 @@ import '../Repository/payment_repo.dart';
 import '../Models/Payment.dart';
 import '../authencation/auth_service.dart';
 import '../Screen/invoice.dart';
+import 'Home.dart';
 
 class Billing extends StatefulWidget {
   const Billing({super.key});
@@ -147,6 +148,16 @@ class _BillingState extends State<Billing> {
     return Scaffold(
       backgroundColor: const Color(0xFF0B1220),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const Home()),
+            );
+          },
+        ),
+
         backgroundColor: const Color(0xFF111827),
         elevation: 0.5,
         title: const Row(

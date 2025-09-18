@@ -139,13 +139,6 @@ class _ProgressState extends State<Progress> {
 
       if (!mounted) return;
 
-      final message = status == CaseStatus.done
-          ? 'Case updated and service reminder has been added'
-          : 'Case status updated successfully';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
       await _load();
     } catch (e) {
       if (!mounted) return;

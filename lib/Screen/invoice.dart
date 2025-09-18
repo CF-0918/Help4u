@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:workshop_assignment/Screen/Billing.dart';
 import '../Repository/invoice_repo.dart';
 
 class InvoiceScreen extends StatefulWidget {
@@ -116,14 +117,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () {
-            // Try to go back first, if that fails, go to home
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushNamedAndRemoveUntil(
-                context, '/home', (route) => false,
-              );
-            }
+              Navigator.push(context,MaterialPageRoute(builder: (context) => const Billing()));
           },
         ),
       ),
@@ -449,13 +443,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   // Try to go back first, if that fails, go to home
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  } else {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context, '/home', (route) => false,
-                    );
-                  }
+                  Navigator.push(context,MaterialPageRoute(builder: (context) => const Billing()));
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF9333EA),
@@ -465,9 +453,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                icon: const Icon(Icons.home),
+                icon: const Icon(Icons.receipt_long),
                 label: const Text(
-                  'Back to Home',
+                  'Go To Billing',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),

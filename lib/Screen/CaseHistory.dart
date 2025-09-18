@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../Components/Timeline_tile.dart';      // your MyStepTile
-import '../Models/Case.dart';                    // CaseModel + CaseStatus
+import '../Components/Timeline_tile.dart'; // your MyStepTile
+import '../Models/Case.dart'; // CaseModel + CaseStatus
 import '../Repository/case_repo.dart';
-import '../Screen/ServiceFeedback.dart';               // CasesRepo
+import '../Screen/ServiceFeedback.dart'; // CasesRepo
 
 class CaseHistory extends StatefulWidget {
-
   const CaseHistory({super.key});
 
   @override
@@ -52,11 +51,10 @@ class _CaseHistoryState extends State<CaseHistory> {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
 
-      // ✅ Use the repo method you already have
       final allCases = await _casesRepo.getCompletedCasesForUser(userId);
 
       if (!mounted) return;
-      setState(() => _cases = allCases);  
+      setState(() => _cases = allCases);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -67,7 +65,6 @@ class _CaseHistoryState extends State<CaseHistory> {
       setState(() => _loading = false);
     }
   }
-
 
   Future<void> _openMap(CaseModel c) async {
     final appt = c.appointment;
@@ -104,7 +101,10 @@ class _CaseHistoryState extends State<CaseHistory> {
             Icon(Icons.history, size: 22, color: Colors.white),
             SizedBox(width: 8),
             Text('Case History',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white)),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white)),
           ],
         ),
       ),
@@ -118,7 +118,8 @@ class _CaseHistoryState extends State<CaseHistory> {
           : ListView.builder(
         padding: const EdgeInsets.all(14),
         itemCount: _cases.length,
-        itemBuilder: (context, i) => _buildCaseCard(_cases[i], purple, purpleDark),
+        itemBuilder: (context, i) =>
+            _buildCaseCard(_cases[i], purple, purpleDark),
       ),
     );
   }
@@ -128,15 +129,15 @@ class _CaseHistoryState extends State<CaseHistory> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B), // dark blue background
+        color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white24, width: 1),
       ),
       child: Theme(
-        // make ExpansionTile arrow white
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          tilePadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           collapsedShape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -146,15 +147,15 @@ class _CaseHistoryState extends State<CaseHistory> {
           iconColor: Colors.white,
           collapsedIconColor: Colors.white70,
 
-          // ==== HEADER (always visible) ====
+          // ==== HEADER ====
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Text(
-                    "Completed Repair",
-                    style: TextStyle(
+                  Text(
+                    c.appointment?.serviceType.name ?? '-',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -166,16 +167,18 @@ class _CaseHistoryState extends State<CaseHistory> {
               ),
               const SizedBox(height: 10),
 
+              // Car Info
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Car info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "${c.appointment?.vehiclePlateNo ?? '-'}",
+                          "${c.appointment?.vehicle.brand ?? '-'} - "
+                              "${c.appointment?.vehicle.model ?? '-'} - "
+                              "${c.appointment?.vehicle.spec ?? '-'}",
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 13,
@@ -183,111 +186,133 @@ class _CaseHistoryState extends State<CaseHistory> {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              "${c.appointment?.bookingDate.toLocal().toString().split(' ')[0] ?? '-'}"
-                                  "  ${c.appointment?.bookingTime ?? ''}",
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          c.appointment?.vehiclePlateNo ?? '-',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
                   ),
-
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      "assets/images/profile.jpg",
+                    child: (c.appointment?.vehicle.vehImage != null &&
+                        c.appointment!.vehicle.vehImage!.isNotEmpty)
+                        ? Image.network(
+                      c.appointment!.vehicle.vehImage!,
+                      width: 80,
+                      height: 60,
+                      fit: BoxFit.cover,
+                    )
+                        : Image.asset(
+                      "assets/images/profile.jpg", // fallback if null/empty
                       width: 80,
                       height: 60,
                       fit: BoxFit.cover,
                     ),
                   ),
+
                 ],
               ),
-
               const SizedBox(height: 12),
 
-// Workshop label only
-        Row(
-          children: [
-            const _MetaLabel(
-              icon: Icons.store_mall_directory_outlined,
-              text: "Workshop",
-            ),
-            const SizedBox(width: 8),
-            _MetaValue(text: c.appointment?.outlet.outletName ?? '-'),
-          ],
-        ),
+              // Workshop Name
+              Row(
+                children: [
+                  const _MetaLabel(
+                    icon: Icons.store_mall_directory_outlined,
+                    text: "Workshop",
+                  ),
+                  const SizedBox(width: 8),
+                  _MetaValue(text: c.appointment?.outlet.outletName ?? '-'),
+                ],
+              ),
+              const SizedBox(height: 8),
 
-        const SizedBox(height: 12),
+              // Appointment Date
+              Row(
+                children: [
+                  const _MetaLabel(
+                    icon: Icons.date_range,
+                    text: "Appointment Date",
+                  ),
+                  const SizedBox(width: 8),
+                  _MetaValue(
+                    text:
+                    "${c.appointment?.bookingDate != null ? c.appointment!.bookingDate.toLocal().toString().split(' ')[0] : '-'}"
+                        "  ${c.appointment?.bookingTime ?? '-'}",
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
 
-// ===== Feedback Button =====
-        Align(
-          alignment: Alignment.centerRight,
-          child: FutureBuilder(
-            future: Supabase.instance.client
-                .from('service_feedback')
-                .select()
-                .eq('caseid', c.caseId)
-                .eq('booking_id', c.appointment?.id ?? '')
-                .eq('userid', Supabase.instance.client.auth.currentUser!.id)
-                .maybeSingle(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SizedBox.shrink(); // or CircularProgressIndicator if you want
-              }
+              // Feedback Button
+              Align(
+                alignment: Alignment.centerRight,
+                child: FutureBuilder(
+                  future: Supabase.instance.client
+                      .from('service_feedback')
+                      .select()
+                      .eq('caseid', c.caseId)
+                      .eq('booking_id', c.appointment?.id ?? '')
+                      .eq('userid',
+                      Supabase.instance.client.auth.currentUser!.id)
+                      .maybeSingle(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const SizedBox.shrink();
+                    }
 
-              final hasReview = snapshot.hasData && snapshot.data != null;
+                    final hasReview =
+                        snapshot.hasData && snapshot.data != null;
 
-              return ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ServiceFeedback(
-                        caseId: c.caseId,
-                        bookingId: c.appointment?.id ?? '',
+                    return ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ServiceFeedback(
+                              caseId: c.caseId,
+                              bookingId: c.appointment?.id ?? '',
+                            ),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                       ),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      icon: const Icon(Icons.feedback,
+                          color: Colors.white, size: 18),
+                      label: Text(
+                        hasReview ? "Edit Feedback" : "Leave Feedback",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                icon: const Icon(Icons.feedback, color: Colors.white, size: 18),
-                label: Text(
-                  hasReview ? "Edit Feedback" : "Leave Feedback",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              );
-            },
+              )
+            ],
           ),
-        )
 
-           ],
-          ),
           // ==== EXPANDED CONTENT ====
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 children: [
-                  // Timeline
                   Column(children: _buildTimelineTiles(c.caseStatus)),
                   const SizedBox(height: 16),
 
@@ -310,12 +335,37 @@ class _CaseHistoryState extends State<CaseHistory> {
                                 fontWeight: FontWeight.w700)),
                         const SizedBox(height: 12),
                         _DetailRow(
-                          label: "Service Type",
-                          value: c.appointment?.serviceType.name ?? '-',
-                        ),
-                        _DetailRow(
                           label: "Mileage",
-                          value: (c.appointment?.mileage ?? 0).toString(),
+                          value: "${c.appointment?.mileage ?? 0} KM",
+                        ),
+
+                        // Payment (Fetch from Supabase)
+                        FutureBuilder(
+                          future: Supabase.instance.client
+                              .from('payments')
+                              .select('amount')
+                              .eq('case_id', c.caseId)
+                              .maybeSingle(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const _DetailRow(
+                                  label: "Total Amount", value: "Loading...");
+                            }
+
+                            if (snapshot.hasError) {
+                              return const _DetailRow(
+                                  label: "Total Amount", value: "Error");
+                            }
+
+                            final data = snapshot.data as Map<String, dynamic>?;
+                            final total = data?['amount'] != null
+                                ? "RM ${data!['amount']}"
+                                : '-';
+
+                            return _DetailRow(
+                                label: "Total Amount", value: total);
+                          },
                         ),
                       ],
                     ),
@@ -333,7 +383,8 @@ class _CaseHistoryState extends State<CaseHistory> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                           children: [
                             const Text("Workshop Info",
                                 style: TextStyle(
@@ -371,17 +422,23 @@ class _CaseHistoryState extends State<CaseHistory> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                CrossAxisAlignment.start,
                                 children: [
-                                  Text(c.appointment?.outlet.outletName ?? '-',
+                                  Text(
+                                      c.appointment?.outlet.outletName ??
+                                          '-',
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 15,
                                           fontWeight: FontWeight.w700)),
                                   const SizedBox(height: 2),
-                                  Text(c.appointment?.outlet.outletAddress ?? '-',
+                                  Text(
+                                      c.appointment?.outlet.outletAddress ??
+                                          '-',
                                       style: const TextStyle(
-                                          color: Colors.white70, fontSize: 13)),
+                                          color: Colors.white70,
+                                          fontSize: 13)),
                                 ],
                               ),
                             ),
@@ -400,7 +457,6 @@ class _CaseHistoryState extends State<CaseHistory> {
   }
 
   // ========= helpers =========
-
   static String _relative(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'just now';
@@ -411,20 +467,25 @@ class _CaseHistoryState extends State<CaseHistory> {
 
   Widget _statusPill(CaseStatus status) {
     final color = switch (status) {
-      CaseStatus.done => const Color(0xFF10B981),         // green
-      CaseStatus.payment => const Color(0xFF60A5FA),      // blue
-      CaseStatus.qc => const Color(0xFFF59E0B),           // amber
-      CaseStatus.repair => const Color(0xFF9333EA),       // purple
+      CaseStatus.done => const Color(0xFF10B981),
+      CaseStatus.payment => const Color(0xFF60A5FA),
+      CaseStatus.qc => const Color(0xFFF59E0B),
+      CaseStatus.repair => const Color(0xFF9333EA),
       CaseStatus.prepareSparePart => const Color(0xFFA78BFA),
       CaseStatus.inspection => const Color(0xFF34D399),
       CaseStatus.checkIn => const Color(0xFF6EE7B7),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24)),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+          color: color, borderRadius: BorderRadius.circular(24)),
       child: Text(
         _labels[status]!,
-        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -457,12 +518,13 @@ class _CaseHistoryState extends State<CaseHistory> {
   }
 }
 
-// ===== Helper Widgets (same as your Progress file) =====
+// ===== Helper Widgets =====
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
-  const _DetailRow({required this.label, required this.value, this.valueColor});
+  const _DetailRow(
+      {required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -472,9 +534,15 @@ class _DetailRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
           Text(value,
-              style: TextStyle(color: valueColor ?? Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: valueColor ?? Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -492,7 +560,9 @@ class _MetaLabel extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: Colors.white70),
         const SizedBox(width: 6),
-        Text(text, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(text,
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 12)),
       ],
     );
   }
@@ -506,7 +576,10 @@ class _MetaValue extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+      style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w700),
     );
   }
 }

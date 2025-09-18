@@ -293,7 +293,15 @@ class _MakeAppointmentState extends State<MakeAppointment> {
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => MyVehicle()));
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => MyVehicle())).then(
+                              (_) => _fetchUserCars().then((_) {
+                            if (cars.isNotEmpty && carSelected == null) {
+                              setState(() {
+                                carSelected = cars.first.plateNo;
+                              });
+                            }
+                          })
+                        );
                       },
                       icon: const Icon(Icons.add_circle_outline),
                       label: const Text("Add Vehicle"),
@@ -316,6 +324,7 @@ class _MakeAppointmentState extends State<MakeAppointment> {
                         final vehicle = cars[i];
                         final String carTitle = "${vehicle.brand} ${vehicle.model} (${vehicle.plateNo})";
                         return _RadioTileCard(
+                          image:vehicle.vehImage,
                           icon: Icons.directions_car,
                           iconColor: const Color(0xFF9333EA),
                           title: carTitle,
@@ -619,8 +628,8 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// Reusable card-styled RadioListTile matching your location UI
 class _RadioTileCard extends StatelessWidget {
+  final String? image; // vehicle image URL (optional)
   final IconData icon;
   final Color iconColor;
   final String title;
@@ -632,6 +641,7 @@ class _RadioTileCard extends StatelessWidget {
   final ValueChanged<String?> onChanged;
 
   const _RadioTileCard({
+    this.image,
     required this.icon,
     required this.iconColor,
     required this.title,
@@ -660,14 +670,23 @@ class _RadioTileCard extends StatelessWidget {
           visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           controlAffinity: ListTileControlAffinity.trailing,
-          secondary: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 22, color: iconColor),
+
+          // ✅ Secondary widget: vehicle image or fallback icon
+          secondary: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: (image != null && image!.isNotEmpty)
+                ? Image.network(
+              image!,
+              width: 40,
+              height: 40,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return _fallbackIcon();
+              },
+            )
+                : _fallbackIcon(),
           ),
+
           title: Text(
             title,
             maxLines: 1,
@@ -712,6 +731,18 @@ class _RadioTileCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// ✅ Helper: fallback profile-style icon
+  Widget _fallbackIcon() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, size: 22, color: iconColor),
     );
   }
 }
