@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:workshop_assignment/Screen/AppointmentDetails.dart';
+import 'package:workshop_assignment/Screen/ServiceFeedback.dart';
 
 import '../Models/Appointment.dart';
 import '../Repository/appointment_repo.dart';
@@ -55,21 +57,63 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     try {
       setState(() => _loading = true);
 
+      // Fetch appointments
       final upcoming = await _repo.fetchUpcomingAppointments();
       final completed = await _repo.fetchCompletedAppointments();
       final cancelled = await _repo.fetchCancelledAppointments();
 
-      final total = upcoming.length + completed.length + cancelled.length;
-      final completedPct = total == 0 ? 0 : ((completed.length / total) * 100).toInt();
+      // Fetch ratings for current user
+      final response = await Supabase.instance.client
+          .from('service_feedback')
+          .select('rating, created_at') // 👈 also fetch created_at for trend
+          .eq('userid', Supabase.instance.client.auth.currentUser!.id);
 
+      double averageRating = 0.0;
+      double ratingChange = 0.0;
+
+      if (response != null && response is List) {
+        // Convert to doubles
+        final ratings = response
+            .map((row) => (row['rating'] as num?)?.toDouble())
+            .where((r) => r != null)
+            .cast<double>()
+            .toList();
+
+        if (ratings.isNotEmpty) {
+          // Current average
+          averageRating =
+              ratings.reduce((a, b) => a + b) / ratings.length;
+
+          // Calculate change: compare last rating to previous average
+          if (ratings.length > 1) {
+            final lastRating = ratings.last;
+            final prevRatings = ratings.sublist(0, ratings.length - 1);
+            final prevAverage =
+                prevRatings.reduce((a, b) => a + b) / prevRatings.length;
+
+            ratingChange = lastRating - prevAverage;
+          }
+        }
+
+        print("✅ Average rating: $averageRating");
+        print("📈 Rating change: $ratingChange");
+      } else {
+        print("⚠️ No ratings found.");
+      }
+
+      // Completion percentage
+      final total = upcoming.length + completed.length + cancelled.length;
+      final completedPct =
+      total == 0 ? 0 : ((completed.length / total) * 100).toInt();
+
+      if (!mounted) return;
       setState(() {
         _upcoming = upcoming;
         _completed = completed;
         _completedPercentage = completedPct;
 
-        // placeholder values; replace with real source if you have one
-        _rating = 4.5;
-        _ratingChange = 2.3;
+        _rating = averageRating;
+        _ratingChange = ratingChange;
       });
     } catch (e) {
       if (!mounted) return;
