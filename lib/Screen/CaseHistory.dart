@@ -19,6 +19,9 @@ class _CaseHistoryState extends State<CaseHistory> {
 
   bool _loading = true;
   List<CaseModel> _cases = [];
+  List<CaseModel> _filteredCases = [];
+  List<String> _vehicleOptions = ["All"];
+  String _selectedVehicle = "All";
 
   // ========= Timeline config =========
   static const List<CaseStatus> _ordered = [
@@ -50,11 +53,24 @@ class _CaseHistoryState extends State<CaseHistory> {
   Future<void> _load() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
-
       final allCases = await _casesRepo.getCompletedCasesForUser(userId);
 
+      // Build vehicle dropdown options
+      final vehicleSet = <String>{};
+      for (var c in allCases) {
+        final plate = c.appointment?.vehiclePlateNo ?? "-";
+        final brand = c.appointment?.vehicle.brand ?? "";
+        final model = c.appointment?.vehicle.model ?? "";
+        final display = "$plate - $brand $model";
+        vehicleSet.add(display);
+      }
+
       if (!mounted) return;
-      setState(() => _cases = allCases);
+      setState(() {
+        _cases = allCases;
+        _filteredCases = List.from(allCases);
+        _vehicleOptions = ["All", ...vehicleSet];
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -64,6 +80,23 @@ class _CaseHistoryState extends State<CaseHistory> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  void _filterByVehicle(String selected) {
+    setState(() {
+      _selectedVehicle = selected;
+      if (selected == "All") {
+        _filteredCases = List.from(_cases);
+      } else {
+        _filteredCases = _cases.where((c) {
+          final plate = c.appointment?.vehiclePlateNo ?? "-";
+          final brand = c.appointment?.vehicle.brand ?? "";
+          final model = c.appointment?.vehicle.model ?? "";
+          final display = "$plate - $brand $model";
+          return display == selected;
+        }).toList();
+      }
+    });
   }
 
   Future<void> _openMap(CaseModel c) async {
@@ -110,16 +143,52 @@ class _CaseHistoryState extends State<CaseHistory> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _cases.isEmpty
-          ? const Center(
-        child: Text('No completed case yet.',
-            style: TextStyle(color: Colors.white70)),
-      )
-          : ListView.builder(
-        padding: const EdgeInsets.all(14),
-        itemCount: _cases.length,
-        itemBuilder: (context, i) =>
-            _buildCaseCard(_cases[i], purple, purpleDark),
+          : Column(
+        children: [
+          if (_vehicleOptions.length > 1)
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: DropdownButtonFormField<String>(
+                value: _selectedVehicle,
+                dropdownColor: const Color(0xFF1E293B),
+                decoration: InputDecoration(
+                  labelText: "Filter by Vehicle",
+                  labelStyle: const TextStyle(color: Colors.white70),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.white24),
+                  ),
+                ),
+                style: const TextStyle(color: Colors.white),
+                items: _vehicleOptions.map((v) {
+                  return DropdownMenuItem(
+                    value: v,
+                    child: Text(v),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) _filterByVehicle(value);
+                },
+              ),
+            ),
+          Expanded(
+            child: _filteredCases.isEmpty
+                ? const Center(
+              child: Text('No completed case yet.',
+                  style: TextStyle(color: Colors.white70)),
+            )
+                : ListView.builder(
+              padding: const EdgeInsets.all(14),
+              itemCount: _filteredCases.length,
+              itemBuilder: (context, i) {
+                final c = _filteredCases[i];
+                return _buildCaseCard(c, purple, purpleDark);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
