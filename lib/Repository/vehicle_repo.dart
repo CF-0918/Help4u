@@ -6,7 +6,7 @@ class VehicleRepository {
   final SupabaseClient _client = Supabase.instance.client;
   final AuthService _authService = AuthService();
 
-  /// Fetch all vehicles for the current user
+  /// Fetch all active vehicles for the current user
   Future<List<Vehicle>> fetchUserCars() async {
     final String? currentUserId = _client.auth.currentUser?.id;
     if (currentUserId == null) {
@@ -18,7 +18,8 @@ class VehicleRepository {
       final response = await _client
           .from('vehicle')
           .select("*")
-          .eq("userid", currentUserId);
+          .eq("userid", currentUserId)
+          .eq("status", "Active");
 
       return (response as List)
           .map((item) => Vehicle.fromJson(item))
@@ -29,7 +30,23 @@ class VehicleRepository {
     }
   }
 
-  /// Insert a new vehicle
+  /// Fetch vehicle by plate number (any status)
+  Future<Vehicle?> fetchByPlateNo(String plateNo) async {
+    try {
+      final response = await _client
+          .from('vehicle')
+          .select()
+          .eq('plateno', plateNo)
+          .maybeSingle();
+
+      return response != null ? Vehicle.fromJson(response) : null;
+    } catch (e) {
+      print("Error fetching vehicle by plateNo: $e");
+      return null;
+    }
+  }
+
+  /// Create a new vehicle entry
   Future<Vehicle> create(Vehicle v) async {
     try {
       final response = await _client
@@ -44,7 +61,7 @@ class VehicleRepository {
     }
   }
 
-  /// Update a vehicle (match by plateno)
+  /// Update an existing vehicle (matched by plate number)
   Future<Vehicle> update(Vehicle v) async {
     try {
       final response = await _client
@@ -60,27 +77,27 @@ class VehicleRepository {
     }
   }
 
-  /// Delete a vehicle (match by plateno)
-  /// Delete a vehicle (only if not used in bookings)
-  /// Delete a vehicle (only if not used in bookings)
-  Future<void> delete(String plateNo) async {
+  /// Soft delete: set vehicle status to Inactive
+  Future<void> deactivate(String plateNo) async {
     try {
-      // Step 1: Check if this vehicle is referenced in bookings
-      final bookings = await _client
-          .from('bookings')
-          .select('vehicleplateno') // correct column name
-          .eq('vehicleplateno', plateNo);
-
-      if (bookings != null && (bookings as List).isNotEmpty) {
-        throw Exception(
-          "This vehicle cannot be deleted because it has existing bookings.",
-        );
-      }
-
-      // Step 2: Proceed to delete if no bookings
-      await _client.from('vehicle').delete().eq('plateno', plateNo);
+      await _client
+          .from('vehicle')
+          .update({'status': 'Inactive'})
+          .eq('plateno', plateNo);
     } catch (e) {
-      throw Exception("Error deleting vehicle: $e");//heheheeh
+      throw Exception("Error deactivating vehicle: $e");
+    }
+  }
+
+  /// Reactivate vehicle without overwriting its existing data
+  Future<void> reactivate(String plateNo) async {
+    try {
+      await _client
+          .from('vehicle')
+          .update({'status': 'Active'})
+          .eq('plateno', plateNo);
+    } catch (e) {
+      throw Exception("Error reactivating vehicle: $e");
     }
   }
 }

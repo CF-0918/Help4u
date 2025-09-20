@@ -10,6 +10,7 @@ class Vehicle {
   final String? type;
   final String? vehImage;
   final String userID;
+  final String status; // ✅ new field
 
   Vehicle({
     required this.plateNo,
@@ -21,10 +22,10 @@ class Vehicle {
     this.type,
     this.vehImage,
     required this.userID,
+    this.status = "Active", // ✅ default value
   });
 
-  // Method to convert the Vehicle object to a map for database insertion.
-  // All keys are in lowercase to match Supabase's default behavior.
+  /// Convert to map for database insertion
   Map<String, dynamic> toInsertMap() {
     return {
       'plateno': plateNo,
@@ -36,14 +37,25 @@ class Vehicle {
       'type': type,
       'vehimage': vehImage,
       'userid': userID,
+      'status': status,
     };
   }
 
-  // Method to convert the Vehicle object to a map for database updates.
-  Map<String, dynamic> toUpdateMap() => toInsertMap();
+  /// Convert to map for database update
+  Map<String, dynamic> toUpdateMap() {
+    return {
+      'regno': regNo,
+      'model': model,
+      'brand': brand,
+      'spec': spec,
+      'manyear': manYear,
+      'type': type,
+      'vehimage': vehImage,
+      'status': status,
+    };
+  }
 
-  // Factory constructor to create a Vehicle object from a JSON map.
-  // The keys used here are now all lowercase.
+  /// Create Vehicle object from JSON
   factory Vehicle.fromJson(Map<String, dynamic> json) {
     return Vehicle(
       plateNo: json['plateno'] as String,
@@ -55,6 +67,34 @@ class Vehicle {
       type: json['type'] as String?,
       vehImage: json['vehimage'] as String?,
       userID: json['userid'] as String,
+      status: json['status'] as String? ?? "Active",
+    );
+  }
+
+  /// ✅ copyWith for easier modification
+  Vehicle copyWith({
+    String? plateNo,
+    String? regNo,
+    String? model,
+    String? brand,
+    String? spec,
+    int? manYear,
+    String? type,
+    String? vehImage,
+    String? userID,
+    String? status,
+  }) {
+    return Vehicle(
+      plateNo: plateNo ?? this.plateNo,
+      regNo: regNo ?? this.regNo,
+      model: model ?? this.model,
+      brand: brand ?? this.brand,
+      spec: spec ?? this.spec,
+      manYear: manYear ?? this.manYear,
+      type: type ?? this.type,
+      vehImage: vehImage ?? this.vehImage,
+      userID: userID ?? this.userID,
+      status: status ?? this.status,
     );
   }
 }

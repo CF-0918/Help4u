@@ -5,6 +5,30 @@ import 'package:workshop_assignment/Repository/vehicle_repo.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
+// Car brands & models (Malaysia common)
+const Map<String, List<String>> carBrandsModels = {
+  "Perodua": [
+    "Myvi","Axia","Bezza","Alza","Ativa",
+    "Kancil","Viva","Kelisa","Kenari","Nautica",
+  ],
+  "Proton": [
+    "Saga","Persona","Iriz","Exora","X50",
+    "X70","Preve","Suprima S","Inspira","Perdana",
+  ],
+  "Toyota": [
+    "Vios","Yaris","Corolla Altis","Camry","Hilux",
+    "Fortuner","Avanza","Innova","Rush","Harrier",
+  ],
+  "Honda": [
+    "City","Civic","Accord","CR-V","HR-V",
+    "Jazz","BR-V","WR-V","Odyssey","Pilot",
+  ],
+  "Nissan": [
+    "Almera","Teana","Sylphy","X-Trail","Navara",
+    "Serena","Livina","Murano","Juke","Latio",
+  ],
+};
+
 class MyVehicle extends StatefulWidget {
   const MyVehicle({super.key});
 
@@ -44,23 +68,60 @@ class _MyVehicleState extends State<MyVehicle> {
     final res = await _editDialog();
     if (res == null) return;
 
-    final newVehicle = Vehicle(
-      plateNo: res.plateNo,
-      regNo: res.regNo,
-      model: res.model,
-      brand: res.brand,
-      spec: res.spec,
-      manYear: res.manYear,
-      type: res.type,
-      vehImage: res.vehImage,
-      userID: Supabase.instance.client.auth.currentUser!.id,
-    );
-
     try {
+      // Step 1: check if this vehicle already exists
+      final existing = await _repo.fetchByPlateNo(res.plateNo);
+
+      if (existing != null && existing.status == "Inactive") {
+        // Step 2: confirm with user
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Vehicle exists"),
+            content: const Text(
+                "This vehicle already exists in your records but is inactive.\n\n"
+                    "Do you want to reactivate it? (The previous data will be restored, "
+                    "not replaced by your new input.)"),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("Cancel")),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("Reactivate")),
+            ],
+          ),
+        );
+
+        if (confirm == true) {
+          await _repo.reactivate(existing.plateNo);
+          setState(() => _items = [..._items, existing.copyWith(status: "Active")]);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Vehicle reactivated')),
+          );
+        }
+        return;
+      }
+
+      // Step 3: create new vehicle if not existing
+      final newVehicle = Vehicle(
+        plateNo: res.plateNo,
+        regNo: res.regNo,
+        model: res.model,
+        brand: res.brand,
+        spec: res.spec,
+        manYear: res.manYear,
+        type: res.type,
+        vehImage: res.vehImage,
+        userID: Supabase.instance.client.auth.currentUser!.id,
+        status: "Active",
+      );
+
       final created = await _repo.create(newVehicle);
       setState(() => _items = [..._items, created]);
+
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Vehicle added')));
+          .showSnackBar(const SnackBar(content: Text('Vehicle saved')));
     } catch (e) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Failed: $e')));
@@ -81,6 +142,7 @@ class _MyVehicleState extends State<MyVehicle> {
       type: res.type,
       vehImage: res.vehImage,
       userID: v.userID,
+      status: "Active",
     );
 
     try {
@@ -99,10 +161,10 @@ class _MyVehicleState extends State<MyVehicle> {
     final ok = await _confirmDelete();
     if (ok != true) return;
     try {
-      await _repo.delete(v.plateNo);
+      await _repo.deactivate(v.plateNo);
       setState(() => _items.removeWhere((x) => x.plateNo == v.plateNo));
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Vehicle deleted')));
+          .showSnackBar(const SnackBar(content: Text('Vehicle removed')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
@@ -110,15 +172,17 @@ class _MyVehicleState extends State<MyVehicle> {
     }
   }
 
+  /// Add/Edit dialog
   Future<_EditVehicle?> _editDialog({Vehicle? v}) async {
     final formKey = GlobalKey<FormState>();
     final plateCtl = TextEditingController(text: v?.plateNo ?? '');
     final regnoCtl = TextEditingController(text: v?.regNo ?? '');
-    final brandCtl = TextEditingController(text: v?.brand ?? '');
-    final modelCtl = TextEditingController(text: v?.model ?? '');
     final specCtl = TextEditingController(text: v?.spec ?? '');
     final manyearCtl = TextEditingController(text: v?.manYear?.toString() ?? '');
     final typeCtl = TextEditingController(text: v?.type ?? '');
+
+    String? selectedBrand = v?.brand;
+    String? selectedModel = v?.model;
 
     String? uploadedUrl = v?.vehImage;
 
@@ -136,18 +200,13 @@ class _MyVehicleState extends State<MyVehicle> {
           "car/${plateCtl.text}_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg";
 
       try {
-        // 👇 store inside Help4uBucket/car/
         await supabase.storage
-            .from("Help4uBucket") // ✅ correct bucket name
-            .uploadBinary(
-          "car/$filePath",     // put files inside "car" folder
-          fileBytes,
-          fileOptions: const FileOptions(upsert: true),
-        );
+            .from("Help4uBucket")
+            .uploadBinary(filePath, fileBytes,
+            fileOptions: const FileOptions(upsert: true));
 
-        uploadedUrl = supabase.storage
-            .from("Help4uBucket") // ✅ correct bucket name aa
-            .getPublicUrl("car/$filePath");
+        uploadedUrl =
+            supabase.storage.from("Help4uBucket").getPublicUrl(filePath);
 
         setState(() {}); // refresh preview
       } catch (e) {
@@ -155,7 +214,6 @@ class _MyVehicleState extends State<MyVehicle> {
           SnackBar(content: Text("Upload failed: $e")),
         );
       }
-
     }
 
     final res = await showDialog<_EditVehicle>(
@@ -181,16 +239,50 @@ class _MyVehicleState extends State<MyVehicle> {
                     const InputDecoration(labelText: 'Registration No'),
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: brandCtl,
+
+                  // Brand Dropdown
+                  DropdownButtonFormField<String>(
+                    value: selectedBrand,
                     decoration: const InputDecoration(labelText: 'Brand'),
+                    items: carBrandsModels.keys
+                        .map<DropdownMenuItem<String>>(
+                          (b) => DropdownMenuItem<String>(
+                        value: b,
+                        child: Text(b),
+                      ),
+                    )
+                        .toList(),
+                    onChanged: (val) {
+                      setLocal(() {
+                        selectedBrand = val;
+                        selectedModel = null;
+                      });
+                    },
+                    validator: (v) =>
+                    v == null ? 'Please select a brand' : null,
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: modelCtl,
+
+                  // Model Dropdown
+                  DropdownButtonFormField<String>(
+                    value: selectedModel,
                     decoration: const InputDecoration(labelText: 'Model'),
+                    items: (selectedBrand != null
+                        ? carBrandsModels[selectedBrand] ?? []
+                        : [])
+                        .map<DropdownMenuItem<String>>(
+                          (m) => DropdownMenuItem<String>(
+                        value: m,
+                        child: Text(m),
+                      ),
+                    )
+                        .toList(),
+                    onChanged: (val) => setLocal(() => selectedModel = val),
+                    validator: (v) =>
+                    v == null ? 'Please select a model' : null,
                   ),
                   const SizedBox(height: 12),
+
                   TextFormField(
                     controller: specCtl,
                     decoration: const InputDecoration(labelText: 'Spec'),
@@ -229,8 +321,9 @@ class _MyVehicleState extends State<MyVehicle> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, null),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
               onPressed: () {
                 if (!(formKey.currentState?.validate() ?? false)) return;
@@ -241,8 +334,8 @@ class _MyVehicleState extends State<MyVehicle> {
                     regNo: regnoCtl.text.trim().isEmpty
                         ? null
                         : regnoCtl.text.trim(),
-                    brand: brandCtl.text.trim(),
-                    model: modelCtl.text.trim(),
+                    brand: selectedBrand!,
+                    model: selectedModel!,
                     spec: specCtl.text.trim().isEmpty
                         ? null
                         : specCtl.text.trim(),
@@ -269,14 +362,15 @@ class _MyVehicleState extends State<MyVehicle> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete vehicle?'),
-        content: const Text('This cannot be undone.'),
+        content:
+        const Text('This will remove the vehicle from your active list.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel')),
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
+              child: const Text('Remove')),
         ],
       ),
     );
